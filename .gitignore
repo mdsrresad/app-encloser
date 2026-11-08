@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions & built binaries
+*.so
+debian/usr/lib/app-encloser/*.so
+src/app_encloser/data/*.so
+
+# Debian build packages
+*.deb
+debian/usr/lib/python3/
+
+# Logs and databases
+*.log
+*.sqlite3
+
+# OS generated
+.DS_Store
+Thumbs.db
+
+# User data & caches
+.cache/
+.pytest_cache/
+*.tar.gz
+social_preview.png

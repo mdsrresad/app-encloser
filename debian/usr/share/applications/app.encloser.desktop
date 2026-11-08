@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Name=App Encloser
+Comment=Isolated Portable Application & Package Manager
+Exec=/usr/bin/app-encloser %f
+Icon=app-encloser
+Terminal=false
+Type=Application
+Categories=System;PackageManager;Utility;
+MimeType=application/vnd.debian.binary-package;application/x-appimage;application/x-rpm;application/zip;application/x-compressed-tar;application/x-tar;
+StartupWMClass=app.encloser
+Keywords=sandbox;package;isolate;bwrap;portable;settings;
