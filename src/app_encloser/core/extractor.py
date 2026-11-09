@@ -8,14 +8,22 @@ from typing import Tuple
 
 def safe_extract_tar(tf: tarfile.TarFile, target_dir: str):
     target_dir = os.path.abspath(target_dir)
+    safe_members = []
+    for member in tf.getmembers():
+        dest_path = os.path.abspath(os.path.join(target_dir, member.name))
+        if not dest_path.startswith(target_dir + os.sep) and dest_path != target_dir:
+            raise RuntimeError(f"Security Alert: Path traversal attempt: {member.name}")
+        if member.isdev() or member.ischr() or member.isblk() or member.isfifo():
+            continue
+        if member.issym() or member.islnk():
+            link_target = os.path.abspath(os.path.join(os.path.dirname(dest_path), member.linkname))
+            if not link_target.startswith(target_dir + os.sep) and link_target != target_dir:
+                continue
+        safe_members.append(member)
     if hasattr(tarfile, "data_filter"):
-        tf.extractall(target_dir, filter="data")
+        tf.extractall(target_dir, members=safe_members, filter="data")
     else:
-        for member in tf.getmembers():
-            dest_path = os.path.abspath(os.path.join(target_dir, member.name))
-            if not dest_path.startswith(target_dir + os.sep) and dest_path != target_dir:
-                raise RuntimeError(f"Security Alert: Path traversal attempt: {member.name}")
-        tf.extractall(target_dir)
+        tf.extractall(target_dir, members=safe_members)
 
 
 def safe_extract_zip(zf: zipfile.ZipFile, target_dir: str):
@@ -97,7 +105,12 @@ def extract_appimage(appimage_path: str, target_dir: str) -> bool:
             bwrap_cmd = [
                 "bwrap",
                 "--die-with-parent",
+                "--unshare-pid",
+                "--unshare-ipc",
+                "--unshare-uts",
                 "--ro-bind", "/", "/",
+                "--dev", "/dev",
+                "--proc", "/proc",
                 "--tmpfs", "/tmp",
                 "--tmpfs", os.path.expanduser("~"),
                 "--bind", target_dir, target_dir,

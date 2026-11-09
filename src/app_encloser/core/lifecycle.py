@@ -389,7 +389,11 @@ for tf in target_files:
     sudo_code = """#!/usr/bin/env bash
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -u|-g|-p)
+        -u|-g)
+            echo "[App Encloser sudo] User/group switching ($1) is not supported in rootless containers." >&2
+            exit 1
+            ;;
+        -p)
             shift 2
             ;;
         -E|-h|-k|-K|-v|-V|-s|-i)
@@ -418,6 +422,11 @@ etc_apt="$app_dir/userdata/etc_apt/sources.list.d"
 lists_dir="$app_dir/userdata/var_lib_apt_lists"
 cache_dir="$app_dir/userdata/cache/apt"
 keyrings_dir="$app_dir/userdata/keyrings"
+
+if [[ "$1" == "upgrade" || "$1" == "full-upgrade" || "$1" == "dist-upgrade" ]]; then
+    echo "[Container APT] Full system upgrade is not supported inside an isolated container. Manage individual container packages via 'install' or 'remove'." >&2
+    exit 1
+fi
 
 if [[ "$1" == "update" ]]; then
     mkdir -p "$lists_dir/partial"
@@ -1710,15 +1719,18 @@ def install_from_url_or_repo(target: str, status_cb=None, scope: Optional[str] =
                     cname = clean_folder_name(first_w.title())
                     break
 
-        from app_encloser.core.container import create_empty_container
+        from app_encloser.core.container import create_empty_container, is_bwrap_supported
         app_dir = os.path.join(ENCLOSED_DIR, cname)
         was_created = False
+        target_strict = False
+        if scope == "strict" or (scope != "standard" and scope != "integrated" and get_setting("strict_sandbox_by_default", True) and is_bwrap_supported()):
+            target_strict = True
         if not os.path.isdir(app_dir):
-            ok, msg = create_empty_container(cname, strict=False)
+            ok, msg = create_empty_container(cname, strict=target_strict)
             if not ok:
                 return False, f"Failed to create container for script: {msg}"
             was_created = True
-        ok_i, msg_i = install_into_container(cname, target, status_cb)
+        ok_i, msg_i = install_into_container(cname, target, status_cb, scope=scope)
         if ok_i:
             from app_encloser.core.history import record_install_event
             record_install_event(cname, cname, target, "command_script")
@@ -1760,7 +1772,7 @@ def install_from_url_or_repo(target: str, status_cb=None, scope: Optional[str] =
     return install_any_package(target_deb, status_cb, scope=scope)
 
 
-def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=None) -> Tuple[bool, str]:
+def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=None, scope: Optional[str] = None) -> Tuple[bool, str]:
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     if not os.path.isdir(app_dir):
         return False, f"Container '{folder_name}' does not exist."
@@ -1840,8 +1852,11 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
 
         from app_encloser.core.container import set_enclosing_level
         from app_encloser.core.config import get_setting
-        default_strict = get_setting("strict_sandbox_by_default", True)
-        set_enclosing_level(folder_name, "strict" if default_strict else "standard")
+        if scope:
+            set_enclosing_level(folder_name, scope)
+        elif not os.path.isfile(os.path.join(app_dir, ".enclosing_level")):
+            default_strict = get_setting("strict_sandbox_by_default", True)
+            set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
         if post_exec:
             with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:

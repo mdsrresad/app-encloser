@@ -3,6 +3,7 @@ import sys
 import json
 import struct
 import shutil
+import tarfile
 import subprocess
 import time
 
@@ -417,6 +418,26 @@ def test_deb_package_build():
     local_bin = os.path.join(backend.LOCAL_BIN, "app-encloser")
     assert (os.path.isfile(deb_bin) and os.access(deb_bin, os.X_OK)) or (os.path.isfile(local_bin) and os.access(local_bin, os.X_OK)), "app-encloser not executable"
 
+    from app_encloser.core.updater import verify_file_checksum
+    assert verify_file_checksum(deb_path, None) is False, "verify_file_checksum must fail when checksums_url is None"
+    assert verify_file_checksum(deb_path, "http://invalid-domain.test/SHA256SUMS.txt") is False, "verify_file_checksum must fail on network/DNS error"
+    assert verify_file_checksum("/nonexistent/file", None) is False, "verify_file_checksum must fail on missing file"
+
+    from app_encloser.core.extractor import safe_extract_tar
+    traversal_tar = "/tmp/test_traversal.tar"
+    traversal_dir = "/tmp/test_traversal_dir"
+    os.makedirs(traversal_dir, exist_ok=True)
+    with tarfile.open(traversal_tar, "w") as tf:
+        ti = tarfile.TarInfo(name="symlink_escape")
+        ti.type = tarfile.SYMTYPE
+        ti.linkname = "/etc/passwd"
+        tf.addfile(ti)
+    with tarfile.open(traversal_tar, "r") as tf:
+        safe_extract_tar(tf, traversal_dir)
+    assert not os.path.exists(os.path.join(traversal_dir, "symlink_escape")), "Symlink escape member was not rejected!"
+    os.remove(traversal_tar)
+    shutil.rmtree(traversal_dir, ignore_errors=True)
+
     print_test(f"11. Debian Package Build & Binary Verification (v{__version__})", True,
                f"Package: app-encloser_{__version__}_all.deb ({deb_sz} bytes) | Executable verified.")
 
@@ -467,6 +488,12 @@ def test_container_level_installation_and_helpers():
 
     rc = backend.run_in_container(folder, ["sudo", "apt-get", "update"])
     assert rc in (0, 100), f"In-container sudo apt-get update returned unexpected code {rc}"
+
+    rc_sudo_u = backend.run_in_container(folder, ["sudo", "-u", "daemon", "ls"])
+    assert rc_sudo_u != 0, "sudo shim did not reject -u flag!"
+
+    rc_apt_up = backend.run_in_container(folder, ["sudo", "apt", "upgrade"])
+    assert rc_apt_up != 0, "apt shim did not reject upgrade command!"
 
     mock_pkg = "/tmp/test_mock_pkg.tar.gz"
     mock_src = "/tmp/mock_src_dir"
@@ -641,6 +668,9 @@ def test_runtime_isolation_and_bwrap_tmpfs():
     assert 'userdata/venv/bin' in content
     assert '--tmpfs /tmp' in content
     assert '--ro-bind / /' in content
+    assert '--unshare-pid' in content
+    assert '--unshare-ipc' in content
+    assert '--unshare-uts' in content
     assert '$HERE/userdata/shims' in content
     assert 'encloser-python' in os.listdir(os.path.join(app_dir, "userdata", "shims"))
 

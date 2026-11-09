@@ -449,7 +449,7 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        cleanup_pid',
         '        exit 126',
         '    fi',
-        '    BWRAP_CMD=(bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    BWRAP_CMD=(bwrap --die-with-parent --unshare-pid --unshare-ipc --unshare-uts --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
         '    if [[ -d "/dev/dri" ]]; then',
         '        BWRAP_CMD+=(--dev-bind /dev/dri /dev/dri)',
         '    fi',
@@ -812,11 +812,7 @@ def create_empty_container(folder_name: str, strict: Optional[bool] = None) -> T
     with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:
         f.write(f"usr/bin/{folder_clean.lower()}")
 
-    if is_network_or_daemon_app(folder_clean):
-        set_strict_sandbox(folder_clean, False)
-        with open(os.path.join(app_dir, ".enclosing_level"), "w", encoding="utf-8") as f:
-            f.write("integrated")
-    elif strict:
+    if strict:
         set_strict_sandbox(folder_clean, True)
         with open(os.path.join(app_dir, ".enclosing_level"), "w", encoding="utf-8") as f:
             f.write("strict")

@@ -34,9 +34,9 @@ App Encloser provides lightweight application containment on Linux desktops with
 | **IPC Resources** | Shared with host user | Isolated IPC namespace (`--unshare-ipc`) | Shared with host user |
 | **Hostname / Domain (UTS)**| Shared with host user | Isolated UTS namespace (`--unshare-uts`) | Shared with host user |
 | **Network Stack** | Shared with host | Shared with host (standard desktop net) | Shared with host |
-| **Display Server Socket** | Shared (`WAYLAND_DISPLAY` / X11) | Bound read-only for GUI access | Shared |
-| **Audio Subsystem** | Shared (PulseAudio / PipeWire) | Bound read-only socket for audio | Shared |
-| **Session D-Bus** | Shared (`DBUS_SESSION_BUS_ADDRESS`)| Passed for desktop portals/notifications | Shared |
+| **Display Server Socket** | Shared (`WAYLAND_DISPLAY` / X11) | Bound via `--bind` (read-write socket required for display communication) | Shared |
+| **Audio Subsystem** | Shared (PulseAudio / PipeWire) | Bound via `--bind` (read-write socket required for audio communication) | Shared |
+| **Session D-Bus** | Shared (`DBUS_SESSION_BUS_ADDRESS`)| Bound via `--bind` for desktop portals/notifications | Shared |
 
 ---
 
@@ -46,7 +46,7 @@ When evaluating application confinement on Linux desktop systems, several cross-
 
 1. **Private Application Environment vs. Kernel Sandbox:**
    - **Private Application Environment (Standard):** Provides user configuration and directory separation. It prevents applications from writing config, cache, and state files to `~/.config` or `~/.local`. *It is not an unprivileged kernel security boundary against malicious native binaries.*
-   - **Strict Sandbox:** Employs Bubblewrap (`bwrap`) unprivileged user namespaces. Enforces kernel-level read-only root mounts (`--ro-bind / /`), masks the user home, and isolates PIDs. Writes outside the designated container directory are blocked by the kernel.
+   - **Strict Sandbox:** Employs Bubblewrap (`bwrap`) unprivileged user namespaces. Enforces kernel-level read-only root mounts (`--ro-bind / /`), masks the user home, and isolates PID, IPC, and UTS namespaces. Writes outside the designated container directory are blocked by the kernel.
 
 2. **X11 vs. Wayland Display Isolation:**
    - On legacy **X11** sessions, the X server protocol does not enforce window isolation between clients. Any client connected to the X11 display socket can theoretically inspect windows or capture input events from other clients.
@@ -56,7 +56,13 @@ When evaluating application confinement on Linux desktop systems, several cross-
    - Enclosed GUI applications are granted access to the user session D-Bus to enable desktop notifications, file pickers (via XDG Desktop Portals), and system theming. Untrusted applications requiring total D-Bus isolation should be run without GUI forwarding.
 
 4. **Kernel Namespace Requirements:**
-   - Strict Sandbox requires unprivileged user namespaces supported and enabled by the host Linux kernel (`CLONE_NEWUSER`). On systems with hardened AppArmor profiles or disabled user namespaces (e.g., `sysctl kernel.apparmor_restrict_unprivileged_userns=1` without an exception profile), App Encloser detects the restriction and issues a diagnostic advisory.
+   - Strict Sandbox requires unprivileged user namespaces supported and enabled by the host Linux kernel (`CLONE_NEWUSER`). On systems with hardened AppArmor profiles or disabled user namespaces (e.g., `sysctl kernel.apparmor_restrict_unprivileged_userns=1` without an exception profile), App Encloser detects the restriction, aborts execution with exit code 126, and issues a diagnostic advisory.
+
+5. **Electron & Chromium Application Sandboxing:**
+   - Chromium and Electron-based applications employ an internal SUID/user namespace sandbox (`chrome-sandbox`). In unprivileged container environments, nested user namespace creation is frequently restricted by the kernel. App Encloser sets `ELECTRON_DISABLE_SANDBOX=1` and applies `--no-sandbox` to the target binary when running Chromium/Electron applications inside Bubblewrap, relying on Bubblewrap's external kernel container (`--ro-bind / /`, `--unshare-pid`, etc.) rather than the application's internal Chromium sandbox.
+
+6. **Package Ingestion & Dependency Scope:**
+   - App Encloser downloads and extracts the target package archive directly (`dpkg-deb -x`). It relies on standard system-installed shared libraries on the host filesystem and does not download the recursive APT dependency closure into the container.
 
 ---
 

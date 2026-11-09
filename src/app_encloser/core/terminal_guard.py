@@ -130,11 +130,28 @@ def sync_terminal_guard() -> None:
     set_terminal_guard_active(enabled)
 
 
-def _run_encloser_install(target: str):
+def _run_encloser_install(target: str, level: str = "strict"):
     from app_encloser.core.lifecycle import install_any_package, install_from_url_or_repo
+    from app_encloser.core.container import set_enclosing_level, find_container_folder
+    scope = "strict" if level == "strict" else ("integrated" if level == "integrated" else "isolated")
     if os.path.isfile(target):
-        return install_any_package(target, scope="isolated")
-    return install_from_url_or_repo(target, scope="isolated")
+        ok, msg = install_any_package(target, scope=scope)
+    else:
+        ok, msg = install_from_url_or_repo(target, scope=scope)
+    if not ok:
+        return False, msg
+    folder = None
+    if "~/EnclosedApps/" in msg:
+        folder = msg.split("~/EnclosedApps/")[-1].strip()
+    elif "'" in msg:
+        m = re.search(r"'([^']+)'", msg)
+        if m:
+            folder = m.group(1)
+    if folder:
+        clean = find_container_folder(folder) or folder
+        set_enclosing_level(clean, level)
+        return True, clean
+    return True, target
 
 
 def handle_intercept_cmd(full_cmd: str) -> int:
@@ -175,33 +192,27 @@ def handle_intercept_cmd(full_cmd: str) -> int:
         return 1
 
     if choice == "1":
-        from app_encloser.core.container import set_enclosing_level
         print("\nInstalling into Complete Encloser (Strict Sandbox)...")
-        success, name_or_err = _run_encloser_install(full_cmd)
+        success, name_or_err = _run_encloser_install(full_cmd, level="strict")
         if success:
-            set_enclosing_level(name_or_err, "strict")
             print(f"Successfully enclosed '{name_or_err}' in Strict Sandbox universe.")
             return 0
         else:
             print(f"Installation failed: {name_or_err}")
             return 1
     elif choice == "2":
-        from app_encloser.core.container import set_enclosing_level
         print("\nInstalling into Standard Directory Encloser...")
-        success, name_or_err = _run_encloser_install(full_cmd)
+        success, name_or_err = _run_encloser_install(full_cmd, level="standard")
         if success:
-            set_enclosing_level(name_or_err, "standard")
             print(f"Successfully enclosed '{name_or_err}' in ~/EnclosedApps.")
             return 0
         else:
             print(f"Installation failed: {name_or_err}")
             return 1
     elif choice == "3":
-        from app_encloser.core.container import set_enclosing_level
         print("\nInstalling into System Integrated Encloser...")
-        success, name_or_err = _run_encloser_install(full_cmd)
+        success, name_or_err = _run_encloser_install(full_cmd, level="integrated")
         if success:
-            set_enclosing_level(name_or_err, "integrated")
             print(f"Successfully enclosed '{name_or_err}' with System Integration.")
             return 0
         else:

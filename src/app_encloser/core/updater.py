@@ -25,8 +25,8 @@ def parse_version_tuple(v_str: str) -> Tuple[int, ...]:
 
 
 def verify_file_checksum(file_path: str, checksums_url: Optional[str]) -> bool:
-    if not checksums_url:
-        return True
+    if not checksums_url or not os.path.isfile(file_path):
+        return False
     try:
         req = urllib.request.Request(checksums_url, headers={"User-Agent": f"AppEncloser/{__version__}"})
         with urllib.request.urlopen(req, timeout=15) as resp:
@@ -39,7 +39,7 @@ def verify_file_checksum(file_path: str, checksums_url: Optional[str]) -> bool:
                 expected = parts[0].lower()
                 break
         if not expected:
-            return True
+            return False
         h = hashlib.sha256()
         with open(file_path, "rb") as f:
             while chunk := f.read(65536):
@@ -147,15 +147,21 @@ def perform_cli_update(download_only: bool = False) -> Tuple[bool, str]:
         except Exception as e:
             return False, f"Failed to download update package: {e}"
 
-        if details.get("checksums_url"):
-            print("[*] Verifying cryptographic SHA256 checksum...")
-            if not verify_file_checksum(deb_file, details["checksums_url"]):
-                try:
-                    os.remove(deb_file)
-                except Exception:
-                    pass
-                return False, "Security Error: SHA256 checksum verification failed! Downloaded package is corrupt or modified."
-            print("[*] SHA256 checksum verified successfully.")
+        if not details.get("checksums_url"):
+            try:
+                os.remove(deb_file)
+            except Exception:
+                pass
+            return False, "Security Error: Release does not provide SHA256SUMS.txt. Automated update aborted for safety."
+
+        print("[*] Verifying cryptographic SHA256 checksum...")
+        if not verify_file_checksum(deb_file, details["checksums_url"]):
+            try:
+                os.remove(deb_file)
+            except Exception:
+                pass
+            return False, "Security Error: SHA256 checksum verification failed! Downloaded package is corrupt or modified."
+        print("[*] SHA256 checksum verified successfully.")
 
         if download_only:
             return True, f"Package downloaded to {deb_file}. To install, run: sudo dpkg -i {deb_file}"
@@ -178,15 +184,21 @@ def perform_cli_update(download_only: bool = False) -> Tuple[bool, str]:
         except Exception as e:
             return False, f"Failed to download update archive: {e}"
 
-        if details.get("checksums_url"):
-            print("[*] Verifying cryptographic SHA256 checksum...")
-            if not verify_file_checksum(tar_file, details["checksums_url"]):
-                try:
-                    os.remove(tar_file)
-                except Exception:
-                    pass
-                return False, "Security Error: SHA256 checksum verification failed! Downloaded archive is corrupt or modified."
-            print("[*] SHA256 checksum verified successfully.")
+        if not details.get("checksums_url"):
+            try:
+                os.remove(tar_file)
+            except Exception:
+                pass
+            return False, "Security Error: Release does not provide SHA256SUMS.txt. Automated update aborted for safety."
+
+        print("[*] Verifying cryptographic SHA256 checksum...")
+        if not verify_file_checksum(tar_file, details["checksums_url"]):
+            try:
+                os.remove(tar_file)
+            except Exception:
+                pass
+            return False, "Security Error: SHA256 checksum verification failed! Downloaded archive is corrupt or modified."
+        print("[*] SHA256 checksum verified successfully.")
 
         return True, f"Universal update archive downloaded to {tar_file}. Extract and run: ./install.sh"
 
