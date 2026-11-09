@@ -1,4 +1,5 @@
 import os
+import sys
 import shutil
 import subprocess
 from typing import Tuple
@@ -53,14 +54,24 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
         if os.path.isdir(ENCLOSED_DIR):
             subprocess.run(["rm", "-rf", ENCLOSED_DIR], stderr=subprocess.DEVNULL)
 
+    cur_py = f"python{sys.version_info.major}.{sys.version_info.minor}"
     targets_to_remove = [
         os.path.join(LOCAL_BIN, "app-encloser"),
         os.path.join(APPS_DIR, "io.ubuntu.AppEncloser.desktop"),
-        os.path.join(REAL_HOME, ".local", "lib", "python3.12", "site-packages", "app_encloser"),
-        os.path.join(REAL_HOME, ".local", "lib", "python3.12", "site-packages", "usercustomize.py"),
+        os.path.join(APPS_DIR, "app.encloser.desktop"),
+        os.path.join(APPS_DIR, "AppEncloser.desktop"),
+        os.path.join(REAL_HOME, ".local", "lib", cur_py, "site-packages", "app_encloser"),
+        os.path.join(REAL_HOME, ".local", "lib", cur_py, "site-packages", "usercustomize.py"),
         os.path.join(REAL_HOME, ".config", "app-encloser"),
         os.path.join(REAL_HOME, ".cache", "app-encloser"),
     ]
+
+    py_lib_base = os.path.join(REAL_HOME, ".local", "lib")
+    if os.path.isdir(py_lib_base):
+        for entry in os.listdir(py_lib_base):
+            if entry.startswith("python3."):
+                targets_to_remove.append(os.path.join(py_lib_base, entry, "site-packages", "app_encloser"))
+                targets_to_remove.append(os.path.join(py_lib_base, entry, "site-packages", "usercustomize.py"))
 
     for t in targets_to_remove:
         try:

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.2] - 2026-11-09
+
+### Security & Hardening
+- **Host RCE Vulnerability Neutralized:** Added strict executable path validation (`is_safe_executable_path`) and bash single-quoted literal assignment (`REL_EXEC='...'`) in `launch.sh`, eliminating shell command injection via malicious package filenames.
+- **Fail-Closed Sandbox Architecture:** Bubblewrap strict sandbox mode now strictly fails closed (exiting with code 126 and clear diagnostic logging) if `bwrap` cannot be initialized, eliminating any silent fallback to unsandboxed host execution.
+- **Minimal Private Device Mounts:** Replaced unrestricted `--dev-bind /dev /dev` with a private Bubblewrap `--dev /dev` mount, targeted hardware bindings (`/dev/dri` for GPU, `/dev/snd` for audio, `/dev/shm` for shared memory), and `--die-with-parent` process lifecycle enforcement.
+- **Authentic APT & GPG Verification:** Removed `Acquire::AllowInsecureRepositories=true`, ensuring isolated APT repositories must be cryptographically signed and verified; GPG shim now strictly propagates real signature verification exit codes rather than accepting unverified bytes on failure.
+- **Safe Container Name Resolution:** Replaced bidirectional substring matching with strict exact and case-insensitive container resolution for destructive commands (`uninstall`, `kill`, `level`), preventing accidental uninstallation of containers matching substrings (e.g. `probe` deleting `IsoProbe`).
+
+### New Features & Enhancements
+- **Built-in Update Engine & In-App Checker:** Added `app-encloser check-updates` and `app-encloser update` CLI commands, along with a real-time "Check for Updates" action in Preferences querying the GitHub Releases API.
+- **Terminal Guard CLI Interface:** Implemented `app-encloser guard [enable|disable|status|sync]` command for full control over shell installation interception directly from terminal.
+- **Active `strict_sandbox_by_default` Setting:** Wired up default isolation preference so newly created containers and apps default to strict Bubblewrap isolation when configured.
+- **Dynamic Multi-Python Compatibility:** Upgraded `self_uninstall.py` to dynamically discover site-packages across Python 3.10, 3.11, 3.12, 3.13, and 3.14 (supporting Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Ubuntu 26.04+, and Debian 12+).
+- **Code Quality & Resource Cleanup:** Fixed unclosed file handles across `lifecycle.py`, `diagnostic.py`, `app_row.py`, and `info.py`, and corrected regex escaping in `encloser-install`.
+- **Zero-Residue Test Suite:** Updated `build.sh` with `--package-only` flag and added automated pre/post-run test artifact wiping in `tests/verify_all.py` to ensure tests leave zero residual files on the host.
+
+---
+
 ## [1.0.1] - 2026-11-09
 
 ### Security & Hardening

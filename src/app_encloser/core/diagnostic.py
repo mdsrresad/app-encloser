@@ -679,7 +679,8 @@ def detect_container_anomalies(folder_name: str) -> List[Dict[str, Any]]:
             sp = os.path.join(stale_shim_dir, s)
             if os.path.isfile(sp):
                 try:
-                    c = open(sp, "r", errors="ignore").read(128)
+                    with open(sp, "r", errors="ignore") as f_sp:
+                        c = f_sp.read(128)
                     if "encloser" in c or "userdata/shims" in c or "APP_ENCLOSER" in c:
                         anomalies.append({"type": "stale_legacy_shim", "item": sp, "severity": "low", "description": f"Stale legacy shim inside app_files: {s}"})
                 except Exception:
@@ -777,7 +778,8 @@ def auto_repair_container(folder_name: str) -> Dict[str, Any]:
             sp = os.path.join(stale_shim_dir, s)
             if os.path.isfile(sp):
                 try:
-                    c = open(sp, "r", errors="ignore").read(128)
+                    with open(sp, "r", errors="ignore") as f_sp:
+                        c = f_sp.read(128)
                     if "encloser" in c or "userdata/shims" in c or "APP_ENCLOSER" in c:
                         os.remove(sp)
                         repairs_applied.append(f"Removed stale legacy shim from app_files: {s}")

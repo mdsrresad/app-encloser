@@ -115,15 +115,7 @@ child_env["PATH"] = ":".join(p_parts)
 if os.path.isfile(real_gpg):
     p = subprocess.Popen([real_gpg] + new_args, stdin=subprocess.PIPE if stdin_data is not None else None, env=child_env)
     p.communicate(input=stdin_data)
-    if p.returncode == 0:
-        sys.exit(0)
-    if not (out_file and stdin_data):
-        sys.exit(p.returncode)
-
-if out_file and stdin_data:
-    with open(out_file, "wb") as f:
-        f.write(stdin_data)
-    sys.exit(0)
+    sys.exit(p.returncode)
 sys.exit(1)
 """
     with open(gpg_py, "w", encoding="utf-8") as f:
@@ -429,7 +421,6 @@ if [[ "$1" == "update" ]]; then
             -o Dir::Etc::sourcelist=/etc/apt/sources.list \
             -o Dir::Etc::sourceparts="$etc_apt" \
             -o Dir::Etc::trustedparts="$keyrings_dir" \
-            -o Acquire::AllowInsecureRepositories=true \
             -o Dir::State::lists="$lists_dir" \
             -o Dir::Cache="$cache_dir" \
             -o Debug::NoLocking=1 update
@@ -627,7 +618,6 @@ def main():
         apt_cmd = [
             "apt-get",
             "-o", f"Dir::Etc::trustedparts={keyrings_dir}",
-            "-o", "Acquire::AllowInsecureRepositories=true",
         ]
         if os.path.isdir(etc_apt_dir) and os.listdir(etc_apt_dir):
             os.makedirs(os.path.join(lists_dir, "partial"), exist_ok=True)
@@ -642,7 +632,7 @@ def main():
         apt_cmd.extend(["download", pkg])
         res = subprocess.run(apt_cmd, cwd=dl_dir)
         if res.returncode != 0:
-            res = subprocess.run(["apt-get", "-o", f"Dir::Etc::trustedparts={keyrings_dir}", "-o", "Acquire::AllowInsecureRepositories=true", "download", pkg], cwd=dl_dir)
+            res = subprocess.run(["apt-get", "-o", f"Dir::Etc::trustedparts={keyrings_dir}", "download", pkg], cwd=dl_dir)
         if res.returncode != 0:
             print(f"Error: Could not download {pkg}")
             sys.exit(1)
@@ -749,7 +739,8 @@ def main():
             try:
                 with open(launch_sh, "r", encoding="utf-8") as lf:
                     lcontent = lf.read()
-                new_lcontent = re.sub(r'TARGET_BIN="\\\\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{target_bin}"', lcontent)
+                new_lcontent = re.sub(r"REL_EXEC='[^']*'", f"REL_EXEC='{target_bin}'", lcontent)
+                new_lcontent = re.sub(r'TARGET_BIN="\\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{target_bin}"', new_lcontent)
                 with open(launch_sh, "w", encoding="utf-8") as lf:
                     lf.write(new_lcontent)
             except Exception:
@@ -962,7 +953,13 @@ def list_enclosed_apps() -> List[Dict[str, Any]]:
             icon_p = None
 
         fmt_f = os.path.join(d, ".pkg_format")
-        fmt = open(fmt_f, encoding="utf-8").read().strip().upper() if os.path.isfile(fmt_f) else "DEB"
+        fmt = "DEB"
+        if os.path.isfile(fmt_f):
+            try:
+                with open(fmt_f, "r", encoding="utf-8") as f_fmt:
+                    fmt = f_fmt.read().strip().upper() or "DEB"
+            except Exception:
+                pass
 
         pids = get_running_app_pids(entry)
         ram_mb = get_pids_ram_mb(pids)
@@ -971,9 +968,21 @@ def list_enclosed_apps() -> List[Dict[str, Any]]:
         size_bytes = get_dir_size_bytes(d)
 
         t_file = os.path.join(d, ".target_exec")
-        target_exec = open(t_file, encoding="utf-8").read().strip() if os.path.isfile(t_file) else ""
+        target_exec = ""
+        if os.path.isfile(t_file):
+            try:
+                with open(t_file, "r", encoding="utf-8") as f_tgt:
+                    target_exec = f_tgt.read().strip()
+            except Exception:
+                pass
         c_file = os.path.join(d, ".install_cmd")
-        install_cmd = open(c_file, encoding="utf-8").read().strip() if os.path.isfile(c_file) else ""
+        install_cmd = ""
+        if os.path.isfile(c_file):
+            try:
+                with open(c_file, "r", encoding="utf-8") as f_cmd:
+                    install_cmd = f_cmd.read().strip()
+            except Exception:
+                pass
         is_cli = target_exec.startswith("userdata/bin") or fmt == "CLI"
         if os.path.isfile(desk):
             info = parse_desktop_file(desk)
@@ -1017,7 +1026,13 @@ def repair_app(folder_name: str) -> Tuple[bool, str]:
         return False, f"No app_files directory found in {folder_name}"
 
     fmt_f = os.path.join(app_dir, ".pkg_format")
-    pkg_format = open(fmt_f, encoding="utf-8").read().strip() if os.path.isfile(fmt_f) else "deb"
+    pkg_format = "deb"
+    if os.path.isfile(fmt_f):
+        try:
+            with open(fmt_f, "r", encoding="utf-8") as f_fmt:
+                pkg_format = f_fmt.read().strip() or "deb"
+        except Exception:
+            pass
 
     desk_path, desk_info = find_best_desktop_file(app_files, folder_name)
 
@@ -1042,12 +1057,16 @@ def repair_app(folder_name: str) -> Tuple[bool, str]:
     elif not rel_exec and os.path.isfile(cand_local) and os.access(cand_local, os.X_OK):
         rel_exec = f"userdata/home/.local/bin/{folder_name.lower()}"
     elif not rel_exec and os.path.isfile(t_file):
-        existing = open(t_file, encoding="utf-8").read().strip()
-        if os.path.basename(existing) not in SHIMS:
-            full_cand = os.path.join(app_dir, existing)
-            full_cand_af = os.path.join(app_files, existing.lstrip("/"))
-            if os.path.isfile(full_cand) or os.path.isfile(full_cand_af):
-                rel_exec = existing
+        try:
+            with open(t_file, "r", encoding="utf-8") as f_ex:
+                existing = f_ex.read().strip()
+            if os.path.basename(existing) not in SHIMS:
+                full_cand = os.path.join(app_dir, existing)
+                full_cand_af = os.path.join(app_files, existing.lstrip("/"))
+                if os.path.isfile(full_cand) or os.path.isfile(full_cand_af):
+                    rel_exec = existing
+        except Exception:
+            pass
 
     if not rel_exec:
         if os.path.isdir(user_bin):
@@ -1565,8 +1584,12 @@ def install_any_package(pkg_path: str, status_cb=None, scope: Optional[str] = No
         f.write(wm_class)
 
     from app_encloser.core.container import is_network_or_daemon_app, set_enclosing_level
+    from app_encloser.core.config import get_setting
     if is_network_or_daemon_app(folder_name):
         set_enclosing_level(folder_name, "integrated")
+    else:
+        default_strict = get_setting("strict_sandbox_by_default", True)
+        set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
     write_launch_script(app_dir, rel_exec, fmt)
     desktop_icon = desk_info.get("Icon")
@@ -1792,8 +1815,12 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
             post_exec = resolve_executable(app_files, "")
 
         from app_encloser.core.container import is_network_or_daemon_app, set_enclosing_level
+        from app_encloser.core.config import get_setting
         if is_network_or_daemon_app(folder_name):
             set_enclosing_level(folder_name, "integrated")
+        else:
+            default_strict = get_setting("strict_sandbox_by_default", True)
+            set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
         if post_exec:
             with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:
@@ -1997,7 +2024,8 @@ def migrate_isolated_to_host(folder_name: str, status_cb=None) -> Tuple[bool, st
     c_file = os.path.join(app_dir, ".install_cmd")
     if os.path.isfile(c_file):
         try:
-            cmd_c = open(c_file).read().strip()
+            with open(c_file, "r", encoding="utf-8") as f_cmd_c:
+                cmd_c = f_cmd_c.read().strip()
             if "install" in cmd_c:
                 parts = cmd_c.split()
                 idx = parts.index("install")

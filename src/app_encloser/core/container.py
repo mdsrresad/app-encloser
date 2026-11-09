@@ -68,6 +68,17 @@ def is_network_or_daemon_app(name: str) -> bool:
     return False
 
 
+def is_safe_executable_path(path: str) -> bool:
+    import re
+    if not path or not isinstance(path, str):
+        return False
+    if ".." in path:
+        return False
+    if any(c in path for c in ("$", "`", ";", "&", "|", "(", ")", "{", "}", "<", ">", '"', "'", "\n", "\r", " ", "\t")):
+        return False
+    return bool(re.match(r"^[a-zA-Z0-9_.\-]+(/[a-zA-Z0-9_.\-]+)*$", path.lstrip("/")))
+
+
 def resolve_executable(app_files: str, orig_exec: str = "") -> Optional[str]:
     import re
     app_dir = os.path.dirname(app_files)
@@ -109,12 +120,13 @@ def resolve_executable(app_files: str, orig_exec: str = "") -> Optional[str]:
                 targets.insert(0, t_low)
 
         cand = os.path.join(app_files, clean)
-        if is_valid_app_binary(cand):
+        if is_safe_executable_path(clean) and is_valid_app_binary(cand):
             return clean
         for sub in ("bin", "usr/bin", "usr/local/bin", "opt"):
             sub_cand = os.path.join(app_files, sub, os.path.basename(clean))
-            if is_valid_app_binary(sub_cand):
-                return os.path.relpath(sub_cand, app_files)
+            rel = os.path.relpath(sub_cand, app_files)
+            if is_safe_executable_path(rel) and is_valid_app_binary(sub_cand):
+                return rel
 
     user_bin = os.path.join(app_dir, "userdata", "bin")
     if os.path.isdir(user_bin):
@@ -194,6 +206,18 @@ def resolve_executable(app_files: str, orig_exec: str = "") -> Optional[str]:
     return None
 
 
+def is_bwrap_supported() -> bool:
+    import shutil
+    import subprocess
+    if not shutil.which("bwrap"):
+        return False
+    try:
+        res = subprocess.run(["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True, timeout=2)
+        return res.returncode == 0
+    except Exception:
+        return False
+
+
 def is_strict_sandbox(app_dir: str) -> bool:
     return os.path.isfile(os.path.join(app_dir, ".strict_sandbox"))
 
@@ -212,7 +236,7 @@ def set_strict_sandbox(folder_name: str, enable: bool = True) -> bool:
     return True
 
 
-def find_container_folder(name: str) -> Optional[str]:
+def find_container_folder(name: str, exact_only: bool = True) -> Optional[str]:
     if not name or not os.path.isdir(ENCLOSED_DIR):
         return None
     raw = name.strip()
@@ -224,9 +248,10 @@ def find_container_folder(name: str) -> Optional[str]:
     for entry in entries:
         if entry.lower() == low:
             return entry
-    for entry in entries:
-        if low in entry.lower() or entry.lower() in low:
-            return entry
+    if not exact_only:
+        matches = [entry for entry in entries if entry.lower().startswith(low)]
+        if len(matches) == 1:
+            return matches[0]
     return None
 
 
@@ -304,10 +329,16 @@ def set_enclosing_level(folder_name: str, level: str) -> bool:
 
 
 def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
+    import re
     launch_sh = os.path.join(app_dir, "launch.sh")
     app_files = os.path.join(app_dir, "app_files")
     lib_dirs = find_lib_dirs(app_files)
     ld_path = ":".join(lib_dirs) if lib_dirs else ""
+
+    clean_rel = rel_exec.lstrip('/')
+    if not is_safe_executable_path(clean_rel):
+        clean_rel = re.sub(r'[^a-zA-Z0-9_\-\./]', '_', clean_rel)
+    escaped_rel = clean_rel.replace("'", "'\\''")
 
     lines = [
         "#!/usr/bin/env bash",
@@ -380,10 +411,11 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'fi',
         'HOST_USER_HOME="$(getent passwd "$UID" 2>/dev/null | cut -d: -f6)"',
         'HOST_USER_HOME="${HOST_USER_HOME:-/home/$USER}"',
-        'if [[ "' + rel_exec.lstrip('/') + '" == userdata/* ]]; then',
-        '    TARGET_BIN="$HERE/' + rel_exec.lstrip('/') + '"',
+        f"REL_EXEC='{escaped_rel}'",
+        'if [[ "$REL_EXEC" == userdata/* ]]; then',
+        '    TARGET_BIN="$HERE/$REL_EXEC"',
         'else',
-        '    TARGET_BIN="$HERE/app_files/' + rel_exec.lstrip('/') + '"',
+        '    TARGET_BIN="$HERE/app_files/$REL_EXEC"',
         'fi',
         'BWRAP_CMD=()',
         'SBOX_FLAG=""',
@@ -404,8 +436,29 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'elif [[ -f "$HERE/.strict_sandbox" ]]; then',
         '    ENCLOSING_LEVEL="strict"',
         'fi',
-        'if [[ "$ENCLOSING_LEVEL" == "strict" ]] && command -v bwrap >/dev/null 2>&1 && bwrap --ro-bind / / true 2>/dev/null; then',
-        '    BWRAP_CMD=(bwrap --ro-bind / / --dev-bind /dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        'if [[ "$ENCLOSING_LEVEL" == "strict" ]]; then',
+        '    if ! command -v bwrap >/dev/null 2>&1; then',
+        '        echo "[App Encloser ERROR] Bubblewrap (bwrap) is not installed on the system. Strict sandbox cannot be enforced. Launch aborted." >&2',
+        '        echo "[App Encloser ERROR] Bubblewrap (bwrap) is not installed on the system." >> "$LOG_FILE"',
+        '        cleanup_pid',
+        '        exit 126',
+        '    fi',
+        '    if ! bwrap --ro-bind / / true 2>/dev/null; then',
+        '        echo "[App Encloser ERROR] Bubblewrap sandbox initialization failed (user namespaces may be restricted on host kernel). Strict sandbox cannot be enforced. Launch aborted." >&2',
+        '        echo "[App Encloser ERROR] Bubblewrap sandbox initialization failed." >> "$LOG_FILE"',
+        '        cleanup_pid',
+        '        exit 126',
+        '    fi',
+        '    BWRAP_CMD=(bwrap --die-with-parent --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    if [[ -d "/dev/dri" ]]; then',
+        '        BWRAP_CMD+=(--dev-bind /dev/dri /dev/dri)',
+        '    fi',
+        '    if [[ -d "/dev/snd" ]]; then',
+        '        BWRAP_CMD+=(--dev-bind /dev/snd /dev/snd)',
+        '    fi',
+        '    if [[ -d "/dev/shm" ]]; then',
+        '        BWRAP_CMD+=(--bind /dev/shm /dev/shm)',
+        '    fi',
         '    if [[ -d "/tmp/.X11-unix" ]]; then',
         '        BWRAP_CMD+=(--bind /tmp/.X11-unix /tmp/.X11-unix)',
         '    fi',
@@ -494,15 +547,6 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        echo "$C_PID" > "$PID_FILE"',
         '        wait "$C_PID"',
         '        EC=$?',
-        '        if [[ $EC -ne 0 ]] && grep -q "setting up uid map: Permission denied" "$LOG_FILE" 2>/dev/null; then',
-        '            echo "[App Encloser WARNING] Bubblewrap strict sandbox initialization failed (user namespaces restricted on host). Falling back to user-space directory isolation." >&2',
-        '            echo "[App Encloser WARNING] Bubblewrap strict sandbox initialization failed (user namespaces restricted on host). Falling back to user-space directory isolation." >> "$LOG_FILE"',
-        '            "${RUN_CMD[@]}" >"$LOG_FILE" 2>&1 &',
-        '            C_PID=$!',
-        '            echo "$C_PID" > "$PID_FILE"',
-        '            wait "$C_PID"',
-        '            EC=$?',
-        '        fi',
         '    else',
         '        "${RUN_CMD[@]}" >"$LOG_FILE" 2>&1 &',
         '        C_PID=$!',
@@ -597,7 +641,7 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
     if fast_check:
         return sorted(pids)
 
-    if not os.path.isdir(app_dir) and not pids and fast_check:
+    if not os.path.isdir(app_dir) and not pids:
         return []
 
     app_real = os.path.realpath(app_dir) if os.path.isdir(app_dir) else ""
@@ -756,7 +800,10 @@ def inspect_container_contents(folder_name: str) -> Dict[str, Any]:
     }
 
 
-def create_empty_container(folder_name: str, strict: bool = True) -> Tuple[bool, str]:
+def create_empty_container(folder_name: str, strict: Optional[bool] = None) -> Tuple[bool, str]:
+    if strict is None:
+        from app_encloser.core.config import get_setting
+        strict = get_setting("strict_sandbox_by_default", True)
     folder_clean = clean_folder_name(folder_name)
     app_dir = os.path.join(ENCLOSED_DIR, folder_clean)
     if os.path.isdir(app_dir):

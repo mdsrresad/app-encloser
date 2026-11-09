@@ -50,7 +50,8 @@ class AppRow(Gtk.ListBoxRow):
         self.last_exit_code = None
         if os.path.isfile(code_file):
             try:
-                c_txt = open(code_file).read().strip()
+                with open(code_file, "r", encoding="utf-8") as f_code:
+                    c_txt = f_code.read().strip()
                 if c_txt:
                     self.last_exit_code = int(c_txt)
             except Exception:

@@ -155,7 +155,13 @@ class AppInfoDialog(Adw.Window):
             grp_loc.add(row_dir)
 
             t_file = os.path.join(app_dir, ".target_exec")
-            target_exec = open(t_file, encoding="utf-8").read().strip() if os.path.isfile(t_file) else "Default package launcher"
+            target_exec = "Default package launcher"
+            if os.path.isfile(t_file):
+                try:
+                    with open(t_file, "r", encoding="utf-8") as f_tgt:
+                        target_exec = f_tgt.read().strip() or "Default package launcher"
+                except Exception:
+                    pass
             row_exec = Adw.ActionRow(title="Target Executable", subtitle=target_exec)
             row_exec.set_icon_name("application-x-executable-symbolic")
             grp_loc.add(row_exec)

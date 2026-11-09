@@ -75,6 +75,8 @@ Usage:
   app-encloser scan [app_name|ALL]       Run container security, permission & tracker audit
   app-encloser list                      List all enclosed applications in JSON format
   app-encloser repair, doctor            Self-heal, audit & repair container shims, desktop files & state
+  app-encloser guard [enable|disable|status] Manage terminal command interceptor & safety guard
+  app-encloser update [--check]          Check for and install application updates
   app-encloser settings [list|get|set]   Inspect or configure installation & security preferences
   app-encloser report <app_name>         View zero-noise runtime diagnostic report
   app-encloser self-uninstall [--purge]  Completely remove App Encloser from system
@@ -491,6 +493,63 @@ def main() -> int:
         else:
             print(f"Unknown settings command '{subcmd}'. Available: list, get, set")
             return 1
+
+    if cmd == "guard":
+        from app_encloser.core.terminal_guard import (
+            is_terminal_guard_active, set_terminal_guard_active, sync_terminal_guard
+        )
+        action = argv[1].lower() if len(argv) > 1 else "status"
+        if action == "enable":
+            ok = set_terminal_guard_active(True)
+            sync_terminal_guard()
+            if ok:
+                print("[SUCCESS] Terminal safety guard enabled. Commands like 'sudo apt install' will be intercepted.")
+                return 0
+            else:
+                print("[ERROR] Failed to enable terminal safety guard.")
+                return 1
+        elif action == "disable":
+            ok = set_terminal_guard_active(False)
+            sync_terminal_guard()
+            if ok:
+                print("[SUCCESS] Terminal safety guard disabled.")
+                return 0
+            else:
+                print("[ERROR] Failed to disable terminal safety guard.")
+                return 1
+        elif action == "sync":
+            sync_terminal_guard()
+            print("[SUCCESS] Terminal safety guard synchronized with user shell profiles.")
+            return 0
+        elif action in ("status", "info"):
+            active = is_terminal_guard_active()
+            status_str = "ACTIVE (Protected)" if active else "DISABLED (Inactive)"
+            print(f"Terminal Guard Status: {status_str}")
+            print("Commands: app-encloser guard enable | disable | status | sync")
+            return 0
+        else:
+            print(f"Unknown guard action '{action}'. Available: enable, disable, status, sync")
+            return 1
+
+    if cmd in ("update", "check-update", "check-updates", "upgrade"):
+        from app_encloser.core.updater import perform_cli_update, check_for_updates
+        if cmd in ("check-update", "check-updates") or "--check" in argv:
+            has_update, new_ver, details = check_for_updates()
+            if has_update and details:
+                print(f"[!] Update available: v{new_ver} (Current: v{__version__})")
+                print(f"    Release: {details.get('release_name', new_ver)}")
+                print(f"    URL: {details.get('html_url', '')}")
+                print("\nRun 'app-encloser update' to download and upgrade.")
+            elif details:
+                print(f"[SUCCESS] App Encloser is up to date (v{__version__}).")
+            else:
+                print(f"[INFO] Unable to check for updates (offline or rate limited). Current version: v{__version__}")
+            return 0
+        download_only = "--download" in argv or "-d" in argv
+        ok, msg = perform_cli_update(download_only=download_only)
+        status = "SUCCESS" if ok else "ERROR"
+        print(f"[{status}] {msg}")
+        return 0 if ok else 1
 
     if os.path.isfile(argv[0]) and is_supported_file(argv[0]):
         if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):

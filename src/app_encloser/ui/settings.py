@@ -5,7 +5,7 @@ import subprocess
 import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Gtk, Adw, Gdk
+from gi.repository import Gtk, Adw, Gdk, GLib
 
 from app_encloser import __version__
 from app_encloser.core.config import (
@@ -302,6 +302,35 @@ class SettingsWindow(Adw.PreferencesWindow):
         row_ver.set_title("App Encloser")
         row_ver.set_subtitle(f"Version {__version__} (Open Source Project)")
         grp_about.add(row_ver)
+
+        row_update = Adw.ActionRow()
+        row_update.set_title("Check for Updates")
+        row_update.set_subtitle("Check GitHub Releases for the latest version")
+        btn_update = Gtk.Button(label="Check Now")
+        btn_update.set_valign(Gtk.Align.CENTER)
+
+        def on_check_clicked(_btn):
+            btn_update.set_sensitive(False)
+            btn_update.set_label("Checking...")
+            import threading
+            from app_encloser.core.updater import check_for_updates
+            def worker():
+                has_update, new_ver, details = check_for_updates()
+                def on_done():
+                    btn_update.set_sensitive(True)
+                    btn_update.set_label("Check Now")
+                    if has_update and new_ver and details:
+                        row_update.set_subtitle(f"Update available: v{new_ver}! Visit {details.get('html_url')}")
+                    elif details:
+                        row_update.set_subtitle(f"Up to date (v{__version__})")
+                    else:
+                        row_update.set_subtitle("Unable to check (offline or rate limited)")
+                GLib.idle_add(on_done)
+            threading.Thread(target=worker, daemon=True).start()
+
+        btn_update.connect("clicked", on_check_clicked)
+        row_update.add_suffix(btn_update)
+        grp_about.add(row_update)
 
         row_warn = Adw.ActionRow()
         row_warn.set_title("Disclaimer & Project Status")

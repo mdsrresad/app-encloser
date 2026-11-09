@@ -9,7 +9,7 @@ from app_encloser.core.container import (
     write_launch_script, run_in_container, open_container_shell, create_empty_container,
     get_running_app_pids, is_app_running, kill_app_processes, inspect_container_contents,
     get_enclosing_level, set_enclosing_level, get_enclosing_level_details, find_container_folder,
-    get_pids_ram_mb
+    get_pids_ram_mb, is_bwrap_supported
 )
 from app_encloser.core.extractor import (
     safe_extract_tar, safe_extract_zip, extract_deb, extract_rpm, extract_appimage,
@@ -56,4 +56,5 @@ from app_encloser.core.terminal_guard import (
     generate_shell_guard_script, is_terminal_guard_active,
     set_terminal_guard_active, sync_terminal_guard, handle_intercept_cmd
 )
+from app_encloser.core.updater import check_for_updates, perform_cli_update
 from app_encloser.core.mcp_server import run_mcp_server

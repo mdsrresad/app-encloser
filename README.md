@@ -208,7 +208,7 @@ sudo apt-get install -y \
 ### Option A: Install via Debian Package (.deb)
 
 ```bash
-sudo dpkg -i app-encloser_1.0.1_all.deb || sudo apt-get install -f -y
+sudo dpkg -i app-encloser_1.0.2_all.deb || sudo apt-get install -f -y
 ```
 
 ### Option B: Build & Install from Source
@@ -260,6 +260,15 @@ app-encloser audit
 
 # Completely uninstall an application (100% zero-residual wipe)
 app-encloser uninstall <AppName>
+
+# Manage terminal installation interceptor & host safety guard
+app-encloser guard status
+app-encloser guard enable
+app-encloser guard disable
+
+# Check for updates from GitHub Releases and upgrade
+app-encloser check-updates
+app-encloser update
 
 # Launch the Model Context Protocol (MCP) server for AI assistants
 app-encloser --mcp
