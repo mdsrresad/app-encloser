@@ -24,6 +24,7 @@
     <category>PackageManager</category>
     <category>Utility</category>
   </categories>
+  <content_rating type="oars-1.1"/>
   <releases>
     <release version="1.0.3" date="2026-11-09"/>
     <release version="1.0.2" date="2026-11-09"/>

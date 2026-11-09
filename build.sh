@@ -31,6 +31,10 @@ mkdir -p debian/usr/lib/python3/dist-packages/app_encloser
 cp -r src/app_encloser/* debian/usr/lib/python3/dist-packages/app_encloser/
 find debian/usr/lib/python3/dist-packages/app_encloser -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
+if [ -f debian/usr/share/doc/app-encloser/changelog.Debian ]; then
+    gzip -9 -n -k -f debian/usr/share/doc/app-encloser/changelog.Debian
+fi
+
 echo "Packaging app-encloser_${VERSION}_all.deb..."
 dpkg-deb --root-owner-group --build debian "app-encloser_${VERSION}_all.deb"
 

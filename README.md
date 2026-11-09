@@ -9,6 +9,7 @@
 [![GTK4](https://img.shields.io/badge/GUI-GTK4%20%2F%20Libadwaita-4A90E2?style=for-the-badge&logo=gnome&logoColor=white)](https://gnome.org)
 [![Bubblewrap](https://img.shields.io/badge/Sandbox-Bubblewrap%20(bwrap)-FF6F00?style=for-the-badge&logo=linuxcontainers&logoColor=white)](https://github.com/containers/bubblewrap)
 [![MCP](https://img.shields.io/badge/Protocol-MCP%20JSON--RPC%202.0-8A2BE2?style=for-the-badge)](https://modelcontextprotocol.io)
+[![CI](https://github.com/mdsrresad/app-encloser/actions/workflows/ci.yml/badge.svg)](https://github.com/mdsrresad/app-encloser/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 <br/>
@@ -74,7 +75,7 @@ graph TD
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Ingest Any Raw Package / Script** | **Direct (.deb, tar, zip, sh)** | Manifest required | Snapcraft required | Dockerfile required | Container image |
 | **Root Background Daemon** | **None (0 MB)** | None | Yes (`snapd`, ~200MB) | Yes (`dockerd`) | Host daemon |
-| **Startup Overhead** | **Sub-process invocation / Minimal container overhead** | ~50-200 ms | ~200-800 ms (squashfs loop) | ~300-1000 ms | ~200-800 ms |
+| **Startup Overhead** | **Direct process / bwrap namespace exec** | Sandbox & portal IPC setup | SquashFS mount & AppArmor profile | Container daemon & runtime init | Container runtime init |
 | **Storage Portability** | **Single folder per app** | Split in `~/.var` | Split in `~/snap` | Docker volumes | Container storage |
 | **Clean Application Purge** | **Wipes container folder & desktop link** | Leaves config | Leaves revisions | `docker prune` | Container removal |
 | **AI Agent Guard (Exit Code 2)** | **Built-in (Opt-in shell interceptor)** | None | None | None | None |
@@ -98,6 +99,7 @@ App Encloser provides three configurable isolation profiles per application:
    - Masks the real host home directory with an isolated `tmpfs` layer.
    - Passes Wayland/X11 and PulseAudio/PipeWire sockets for interactive desktop integration.
    - Binds the container's directory read-write, strictly preventing modifications outside `~/EnclosedApps/<AppName>/`.
+   - *Security boundary note:* Strict Sandbox enforces kernel filesystem write protection and masks `$HOME`. Shared desktop sockets (X11 display, PulseAudio/PipeWire, session D-Bus) are provided for graphical operation; on X11, clients lack per-window input isolation (Wayland is recommended for full display isolation). Requires unprivileged user namespaces enabled on the host.
 3. **System Integrated:**
    - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management.
 
@@ -209,7 +211,7 @@ sudo apt-get install -y \
 ### Option A: Install via Debian Package (.deb)
 
 ```bash
-sudo dpkg -i app-encloser_1.0.2_all.deb || sudo apt-get install -f -y
+sudo dpkg -i app-encloser_1.0.3_all.deb || sudo apt-get install -f -y
 ```
 
 ### Option B: Build & Install from Source

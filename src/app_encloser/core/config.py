@@ -6,7 +6,7 @@ import subprocess
 from typing import Optional, Dict, Any
 
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
-ENCLOSED_DIR = os.path.join(REAL_HOME, "EnclosedApps")
+ENCLOSED_DIR = os.environ.get("APP_ENCLOSER_DIR") or os.path.join(REAL_HOME, "EnclosedApps")
 APPS_DIR = os.path.join(REAL_HOME, ".local", "share", "applications")
 ICONS_DIR = os.path.join(REAL_HOME, ".local", "share", "icons", "hicolor")
 LOCAL_BIN = os.path.join(REAL_HOME, ".local", "bin")

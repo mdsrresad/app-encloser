@@ -1,2 +1,2 @@
-acf735dcbe7c40f3123529d4f99cc345a13df2d408423c617c70bf2e37630342  app-encloser_1.0.3_all.deb
-349763795c1adc30edd73ef92708bfec0054ce9fffe0f33b31d8c2d3b1a62e41  app-encloser-1.0.3-linux-universal.tar.gz
+c3cd5e0f2edd327b1bfa819ac79fbe2dd1ea587688f4424341c18603c7648488  app-encloser_1.0.3_all.deb
+5817587612b6ca38eff981684670455ebe671b7545bcfd65237948bc61cf173d  app-encloser-1.0.3-linux-universal.tar.gz
