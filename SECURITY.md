@@ -70,6 +70,13 @@ When evaluating application confinement on Linux desktop systems, several cross-
 
 App Encloser documents all security fixes openly and transparently:
 
+### Version 1.0.4 (2026-11-10)
+- **Kernel Namespace Unsharing:** Added `--unshare-pid`, `--unshare-ipc`, and `--unshare-uts` flags to Bubblewrap strict sandbox container invocations.
+- **Fail-Closed Update Verification:** Enforced fail-closed cryptographic verification in updater; updates abort if `SHA256SUMS.txt` is missing, unlisted, or checksum verification fails.
+- **Pre-Contained Script Execution:** Enclosed script ingestion inside Bubblewrap from container creation, preventing uncontained script execution on host.
+- **Tar Symlink Traversal Protection:** Hardened archive extraction across all Python versions by validating symlink destinations stay within target directory.
+- **Sudo & APT Shim Semantics:** Rejected unsupported user switching (`-u`/`-g`) and full system upgrades inside rootless containers.
+
 ### Version 1.0.3 (2026-11-09)
 - **Eliminated Host Daemon Spawning:** Removed legacy host-side background monitoring loop from container initialization.
 - **Passive AppImage Extraction:** Replaced live `--appimage-extract` execution on host with static SquashFS tools (`unsquashfs`, `7z`), falling back to an unprivileged sandboxed container when required.

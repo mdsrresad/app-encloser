@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.4] - 2026-11-10
+
+### Security & Hardening
+- **Real PID, IPC, and UTS Namespace Isolation:** Added `--unshare-pid`, `--unshare-ipc`, and `--unshare-uts` flags to Bubblewrap container launches with private `/proc` mounting, preventing enclosed processes from enumerating or signaling host processes.
+- **Fail-Closed Cryptographic Verification:** Hardened `updater.py` to enforce strict fail-closed semantics; automated updates strictly abort if `SHA256SUMS.txt` is missing, the asset is unlisted, or checksum verification fails.
+- **Pre-Contained Script Ingestion:** Container creation now applies the target isolation level upfront before running installer scripts, ensuring untrusted install scripts run inside Bubblewrap rather than uncontained on the host.
+- **Tar Symlink Traversal Defense:** Added comprehensive symlink and hardlink path inspection across all Python versions, safely rejecting members attempting directory escapes.
+- **Sudo & APT Shim Semantics:** Updated container `sudo` shim to explicitly reject unsupported user/group switching (`-u`/`-g`) with exit code 1; updated `apt` shim to halt full system upgrades (`upgrade`, `full-upgrade`) inside containers.
+- **Packaging Compliance:** Added standard Debian machine-readable copyright specification (DEP-5) and AppStream 1.0 OARS content rating metadata.
+
+### Bug Fixes & Improvements
+- **Terminal Guard Menu Level Selection:** Fixed container name resolution in interactive guard menu, ensuring the user's chosen isolation level (Strict, Standard, Integrated) is faithfully applied.
+- **Removed Network/Daemon Level Downgrade:** Container creation no longer silently downgrades strict isolation mode for applications with bundled service files.
+- **Truthful Socket Documentation:** Documented that display, audio, and D-Bus sockets are bound read-write (`--bind`) as required by Linux domain socket IPC.
+
+---
+
 ## [1.0.3] - 2026-11-09
 
 ### Security & Hardening

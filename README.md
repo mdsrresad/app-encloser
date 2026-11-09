@@ -211,7 +211,7 @@ sudo apt-get install -y \
 ### Option A: Install via Debian Package (.deb)
 
 ```bash
-sudo dpkg -i app-encloser_1.0.3_all.deb || sudo apt-get install -f -y
+sudo dpkg -i app-encloser_1.0.4_all.deb || sudo apt-get install -f -y
 ```
 
 ### Option B: Build & Install from Source
