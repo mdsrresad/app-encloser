@@ -14,7 +14,9 @@ static int (*real_posix_spawnp)(pid_t *pid, const char *file, const posix_spawn_
 
 static const char* check_redirect(const char* path) {
     if (!path) return path;
-    if (strstr(path, "nft") != NULL) {
+    const char *base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    if (strcmp(base, "nft") == 0) {
         const char *shim = getenv("ENCLOSER_NFT_SHIM");
         if (shim && access(shim, X_OK) == 0) {
             return shim;

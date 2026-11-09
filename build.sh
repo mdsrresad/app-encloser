@@ -76,12 +76,6 @@ MimeType=application/vnd.debian.binary-package;application/x-appimage;applicatio
 StartupWMClass=app.encloser
 Keywords=sandbox;package;isolate;bwrap;portable;settings;
 EOF
-    cat > "$USER_APPS/AppEncloser.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=App Encloser
-NoDisplay=true
-EOF
     cp -r debian/usr/share/icons/* "$USER_ICONS/" 2>/dev/null || true
 
     if command -v update-desktop-database >/dev/null 2>&1; then
@@ -91,5 +85,8 @@ EOF
         gtk-update-icon-cache -q -t -f "$USER_ICONS" 2>/dev/null || true
     fi
 done
+
+tar --sort=name --owner=root:0 --group=root:0 --mtime="@$SOURCE_DATE_EPOCH" -czf app-encloser-1.0.0-linux-universal.tar.gz src debian tests build.sh install.sh LICENSE README.md SECURITY.md CHANGELOG.md CONTRIBUTING.md
+sha256sum app-encloser_1.0.0_all.deb app-encloser-1.0.0-linux-universal.tar.gz > SHA256SUMS.txt
 
 echo "=== Build & Installation Complete ==="

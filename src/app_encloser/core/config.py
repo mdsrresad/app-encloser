@@ -24,7 +24,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "button_style": "icons_only",
     "non_grabbing_menus": True,
     "strict_sandbox_by_default": True,
-    "terminal_guard_enabled": True
+    "terminal_guard_enabled": False
 }
 
 _DIR_SIZE_CACHE: Dict[str, tuple] = {}

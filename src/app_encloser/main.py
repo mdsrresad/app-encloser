@@ -19,7 +19,7 @@ from app_encloser.core import (
     resolve_container_dependencies, analyze_container_incompatibility,
     get_enclosing_level, set_enclosing_level, get_enclosing_level_details,
     find_container_folder, format_audit_report, handle_intercept_cmd,
-    sync_terminal_guard
+    sync_terminal_guard, uninstall_enclosed_app, uninstall_host_package
 )
 
 
@@ -68,6 +68,7 @@ Usage:
   app-encloser inspect <app_name>        Inspect isolated container contents, binaries & state
   app-encloser resolve-deps <app> [--yes] Automatically resolve dependencies & library paths with confirmation
   app-encloser level <app> [level]       Get or set container enclosing level (standard, strict, integrated)
+  app-encloser uninstall <app_name>      Completely wipe an enclosed container or package
   app-encloser create <name> [--strict]  Create a clean isolated container environment
   app-encloser export <app_name> [path]  Export an application container to archive
   app-encloser export-all [dest_path]    Export all application containers to archive
@@ -223,6 +224,28 @@ def main() -> int:
         status = "SUCCESS" if ok else "ERROR"
         print(f"[{status}] {msg}")
         return 0 if ok else 1
+
+    if cmd in ("uninstall", "remove", "delete", "purge"):
+        if len(argv) < 2:
+            print("Usage: app-encloser uninstall <app_name>")
+            return 1
+        raw_name = argv[1]
+        resolved = find_container_folder(raw_name)
+        if resolved:
+            print(f"[*] Stopping processes and removing enclosed container '{resolved}'...")
+            uninstall_enclosed_app(resolved)
+            print(f"[SUCCESS] Successfully uninstalled container '{resolved}'.")
+            return 0
+        from app_encloser.core.history import check_host_package_status
+        h_info = check_host_package_status(raw_name)
+        if h_info:
+            print(f"[*] Removing host-installed package '{raw_name}'...")
+            ok, msg = uninstall_host_package(h_info, status_cb=lambda s: print(f"    -> {s}"))
+            status = "SUCCESS" if ok else "ERROR"
+            print(f"[{status}] {msg}")
+            return 0 if ok else 1
+        print(f"[ERROR] Application or container '{raw_name}' not found in ~/EnclosedApps or tracked history.")
+        return 1
 
     if cmd in ("run", "launch", "open"):
         if len(argv) < 2:

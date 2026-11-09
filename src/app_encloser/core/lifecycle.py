@@ -117,11 +117,14 @@ if os.path.isfile(real_gpg):
     p.communicate(input=stdin_data)
     if p.returncode == 0:
         sys.exit(0)
+    if not (out_file and stdin_data):
+        sys.exit(p.returncode)
 
 if out_file and stdin_data:
     with open(out_file, "wb") as f:
         f.write(stdin_data)
-sys.exit(0)
+    sys.exit(0)
+sys.exit(1)
 """
     with open(gpg_py, "w", encoding="utf-8") as f:
         f.write(gpg_code)

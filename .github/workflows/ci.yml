@@ -1,0 +1,32 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc bubblewrap libglib2.0-dev libgtk-4-dev libadwaita-1-dev python3-gi xvfb desktop-file-utils
+
+      - name: Build package and compile shims
+        run: |
+          ./build.sh
+
+      - name: Run verification test suite
+        run: |
+          xvfb-run -a python3 tests/verify_all.py
