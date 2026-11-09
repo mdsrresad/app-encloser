@@ -5,8 +5,9 @@ SCRIPT_DIR="$(dirname "$(readlink -f "${0}")")"
 cd "$SCRIPT_DIR"
 
 export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1731110400}"
+VERSION=$(python3 -c "import re; f=open('src/app_encloser/__init__.py'); m=re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', f.read()); print(m.group(1))")
 
-echo "=== Building App Encloser 1.0.0 ==="
+echo "=== Building App Encloser ${VERSION} ==="
 
 find src -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 find debian -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
@@ -21,8 +22,8 @@ mkdir -p debian/usr/lib/python3/dist-packages/app_encloser
 cp -r src/app_encloser/* debian/usr/lib/python3/dist-packages/app_encloser/
 find debian/usr/lib/python3/dist-packages/app_encloser -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
 
-echo "Packaging app-encloser_1.0.0_all.deb..."
-dpkg-deb --root-owner-group --build debian app-encloser_1.0.0_all.deb
+echo "Packaging app-encloser_${VERSION}_all.deb..."
+dpkg-deb --root-owner-group --build debian "app-encloser_${VERSION}_all.deb"
 
 REAL_HOME=$(python3 -c "import pwd, os; print(pwd.getpwuid(os.getuid()).pw_dir)")
 LOCAL_BIN="$REAL_HOME/.local/bin"
@@ -86,7 +87,7 @@ EOF
     fi
 done
 
-tar --sort=name --owner=root:0 --group=root:0 --mtime="@$SOURCE_DATE_EPOCH" -czf app-encloser-1.0.0-linux-universal.tar.gz src debian tests build.sh install.sh LICENSE README.md SECURITY.md CHANGELOG.md CONTRIBUTING.md
-sha256sum app-encloser_1.0.0_all.deb app-encloser-1.0.0-linux-universal.tar.gz > SHA256SUMS.txt
+tar --sort=name --owner=root:0 --group=root:0 --mtime="@$SOURCE_DATE_EPOCH" -czf "app-encloser-${VERSION}-linux-universal.tar.gz" src debian tests build.sh install.sh LICENSE README.md SECURITY.md CHANGELOG.md CONTRIBUTING.md
+sha256sum "app-encloser_${VERSION}_all.deb" "app-encloser-${VERSION}-linux-universal.tar.gz" > SHA256SUMS.txt
 
 echo "=== Build & Installation Complete ==="
