@@ -817,30 +817,58 @@ class AppEncloserWindow(Adw.ApplicationWindow):
             self.list_box.append(row)
 
     def show_error_dialog(self, title: str, message: str):
-        dialog = Adw.MessageDialog(
-            transient_for=self,
-            heading=title,
-            body=str(message)
-        )
-        dialog.add_response("ok", "OK")
-        dialog.set_default_response("ok")
-        dialog.present()
+        if hasattr(Adw, "MessageDialog"):
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading=title,
+                body=str(message)
+            )
+            dialog.add_response("ok", "OK")
+            dialog.set_default_response("ok")
+            dialog.present()
+        else:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                modal=True,
+                message_type=Gtk.MessageType.ERROR,
+                buttons=Gtk.ButtonsType.OK,
+                text=title
+            )
+            dialog.format_secondary_text(str(message))
+            dialog.connect("response", lambda d, r: d.destroy())
+            dialog.present()
 
     def show_confirm_dialog(self, title: str, message: str, on_confirm_cb):
-        dialog = Adw.MessageDialog(
-            transient_for=self,
-            heading=title,
-            body=str(message)
-        )
-        dialog.add_response("cancel", "Cancel")
-        dialog.add_response("confirm", "Uninstall")
-        dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE)
-        dialog.set_default_response("confirm")
-        def on_resp(_d, resp):
-            if resp == "confirm":
-                on_confirm_cb()
-        dialog.connect("response", on_resp)
-        dialog.present()
+        if hasattr(Adw, "MessageDialog"):
+            dialog = Adw.MessageDialog(
+                transient_for=self,
+                heading=title,
+                body=str(message)
+            )
+            dialog.add_response("cancel", "Cancel")
+            dialog.add_response("confirm", "Uninstall")
+            dialog.set_response_appearance("confirm", Adw.ResponseAppearance.DESTRUCTIVE)
+            dialog.set_default_response("confirm")
+            def on_resp(_d, resp):
+                if resp == "confirm":
+                    on_confirm_cb()
+            dialog.connect("response", on_resp)
+            dialog.present()
+        else:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK_CANCEL,
+                text=title
+            )
+            dialog.format_secondary_text(str(message))
+            def on_resp(d, resp):
+                if resp in (Gtk.ResponseType.OK, Gtk.ResponseType.YES):
+                    on_confirm_cb()
+                d.destroy()
+            dialog.connect("response", on_resp)
+            dialog.present()
 
     def launch_app(self, app: dict):
         if app.get("is_host_app"):

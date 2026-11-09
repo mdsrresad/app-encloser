@@ -276,7 +276,7 @@ def _analyze_container_incompatibility_inner(folder_name: str) -> Dict[str, Any]
                 "details": [line],
                 "missing_libraries": [],
                 "exit_code": last_exit_code or 1,
-                "recommendation": f"Run application in a container with a newer GLIBC version or install a build targeting Ubuntu 24.04.",
+                "recommendation": f"Run application in a container with a newer GLIBC version or install a build targeting your host Linux distribution.",
                 "log_excerpt": log_excerpt,
                 "full_log": full_log,
                 "binary_arch": b_arch,

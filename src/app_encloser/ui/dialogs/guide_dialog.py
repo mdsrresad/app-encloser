@@ -37,7 +37,7 @@ class UserGuideDialog(Adw.Window):
         intro_text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         intro_title = Gtk.Label(label="<b><big>App Encloser Core Architecture</big></b>", use_markup=True, xalign=0)
         intro_desc = Gtk.Label(
-            label="App Encloser provides lightweight, native application and package isolation on Ubuntu 24.04 LTS. Below are the five foundational concepts powering your enclosed environments.",
+            label="App Encloser provides lightweight, native application and package isolation on Linux (Ubuntu 22.04, 24.04, 26.04+ & Debian). Below are the five foundational concepts powering your enclosed environments.",
             xalign=0,
             wrap=True
         )

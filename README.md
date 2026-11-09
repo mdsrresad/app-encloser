@@ -4,8 +4,8 @@
 
 ### Native Linux Application Sandbox, Package Encloser & Runtime Universe
 
-[![Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu%2024.04%20LTS-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](https://ubuntu.com)
-[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu%2022.04%20%7C%2024.04%20%7C%2026.04%2B%20%7C%20Debian-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](https://ubuntu.com)
+[![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![GTK4](https://img.shields.io/badge/GUI-GTK4%20%2F%20Libadwaita-4A90E2?style=for-the-badge&logo=gnome&logoColor=white)](https://gnome.org)
 [![Bubblewrap](https://img.shields.io/badge/Sandbox-Bubblewrap%20(bwrap)-FF6F00?style=for-the-badge&logo=linuxcontainers&logoColor=white)](https://github.com/containers/bubblewrap)
 [![MCP](https://img.shields.io/badge/Protocol-MCP%20JSON--RPC%202.0-8A2BE2?style=for-the-badge)](https://modelcontextprotocol.io)
@@ -180,7 +180,13 @@ Enclosed applications are structured as follows:
 
 ## Installation & Setup
 
-### Prerequisites (Ubuntu 24.04 LTS / Debian 12+)
+### Prerequisites (Ubuntu 22.04 / 24.04 / 26.04+ / Debian 12+)
+
+App Encloser is designed for broad modern Linux compatibility:
+- **Ubuntu:** 22.04 LTS (Jammy), 24.04 LTS (Noble), 26.04+ (Resolute)
+- **Debian:** 12 (Bookworm), 13 (Trixie)
+- **Derivatives:** Linux Mint 21/22, Pop!_OS, Zorin OS
+- **Universal Linux:** Any distribution with Python 3.10+, GTK4/Libadwaita, and Bubblewrap
 
 Install system dependencies:
 
