@@ -9,7 +9,7 @@ from app_encloser.core.container import (
     write_launch_script, run_in_container, open_container_shell, create_empty_container,
     get_running_app_pids, is_app_running, kill_app_processes, inspect_container_contents,
     get_enclosing_level, set_enclosing_level, get_enclosing_level_details, find_container_folder,
-    get_pids_ram_mb, is_bwrap_supported
+    get_pids_ram_mb, is_bwrap_supported, set_container_option, get_container_options
 )
 from app_encloser.core.extractor import (
     safe_extract_tar, safe_extract_zip, extract_deb, extract_rpm, extract_appimage,

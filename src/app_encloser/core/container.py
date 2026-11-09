@@ -328,6 +328,40 @@ def set_enclosing_level(folder_name: str, level: str) -> bool:
     return True
 
 
+def set_container_option(folder_name: str, option: str, enabled: bool) -> bool:
+    resolved = find_container_folder(folder_name) or folder_name
+    app_dir = os.path.join(ENCLOSED_DIR, resolved)
+    if not os.path.isdir(app_dir):
+        return False
+    clean_opt = option.lstrip(".")
+    if clean_opt not in ("no_net", "no_display", "no_dbus", "no_sound"):
+        return False
+    opt_file = os.path.join(app_dir, f".{clean_opt}")
+    try:
+        if enabled:
+            with open(opt_file, "w", encoding="utf-8") as f:
+                f.write("1")
+        else:
+            if os.path.exists(opt_file):
+                os.remove(opt_file)
+        return True
+    except Exception:
+        return False
+
+
+def get_container_options(folder_name: str) -> Dict[str, bool]:
+    resolved = find_container_folder(folder_name) or folder_name
+    app_dir = os.path.join(ENCLOSED_DIR, resolved)
+    if not os.path.isdir(app_dir):
+        return {}
+    return {
+        "no_net": os.path.isfile(os.path.join(app_dir, ".no_net")),
+        "no_display": os.path.isfile(os.path.join(app_dir, ".no_display")),
+        "no_dbus": os.path.isfile(os.path.join(app_dir, ".no_dbus")),
+        "no_sound": os.path.isfile(os.path.join(app_dir, ".no_sound"))
+    }
+
+
 def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
     import re
     launch_sh = os.path.join(app_dir, "launch.sh")
@@ -449,32 +483,41 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        cleanup_pid',
         '        exit 126',
         '    fi',
-        '    BWRAP_CMD=(bwrap --die-with-parent --unshare-pid --unshare-ipc --unshare-uts --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
-        '    if [[ -d "/dev/dri" ]]; then',
-        '        BWRAP_CMD+=(--dev-bind /dev/dri /dev/dri)',
+        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    if [[ -f "$HERE/.no_net" || "$ENCLOSER_NO_NET" == "1" ]]; then',
+        '        BWRAP_CMD+=(--unshare-net)',
         '    fi',
-        '    if [[ -d "/dev/snd" ]]; then',
-        '        BWRAP_CMD+=(--dev-bind /dev/snd /dev/snd)',
-        '    fi',
-        '    if [[ -d "/dev/shm" ]]; then',
-        '        BWRAP_CMD+=(--bind /dev/shm /dev/shm)',
-        '    fi',
-        '    if [[ -d "/tmp/.X11-unix" ]]; then',
-        '        BWRAP_CMD+=(--bind /tmp/.X11-unix /tmp/.X11-unix)',
-        '    fi',
-        '    if [[ -n "$XDG_RUNTIME_DIR" && -d "$XDG_RUNTIME_DIR" ]]; then',
-        '        if [[ -n "$WAYLAND_DISPLAY" && -e "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then',
-        '            BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY")',
+        '    if [[ ! -f "$HERE/.no_display" && "$ENCLOSER_NO_DISPLAY" != "1" ]]; then',
+        '        if [[ -d "/dev/dri" ]]; then',
+        '            BWRAP_CMD+=(--dev-bind /dev/dri /dev/dri)',
         '        fi',
-        '        if [[ -e "$XDG_RUNTIME_DIR/pulse" ]]; then',
+        '        if [[ -d "/tmp/.X11-unix" ]]; then',
+        '            BWRAP_CMD+=(--bind /tmp/.X11-unix /tmp/.X11-unix)',
+        '        fi',
+        '        if [[ -n "$XDG_RUNTIME_DIR" && -d "$XDG_RUNTIME_DIR" ]]; then',
+        '            if [[ -n "$WAYLAND_DISPLAY" && -e "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]]; then',
+        '                BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY")',
+        '            fi',
+        '        fi',
+        '        if [[ -n "$XAUTHORITY" && -f "$XAUTHORITY" ]]; then',
+        '            BWRAP_CMD+=(--ro-bind "$XAUTHORITY" "$XAUTHORITY")',
+        '        fi',
+        '    fi',
+        '    if [[ ! -f "$HERE/.no_sound" && "$ENCLOSER_NO_SOUND" != "1" ]]; then',
+        '        if [[ -d "/dev/snd" ]]; then',
+        '            BWRAP_CMD+=(--dev-bind /dev/snd /dev/snd)',
+        '        fi',
+        '        if [[ -n "$XDG_RUNTIME_DIR" && -e "$XDG_RUNTIME_DIR/pulse" ]]; then',
         '            BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/pulse" "$XDG_RUNTIME_DIR/pulse")',
         '        fi',
-        '        if [[ -e "$XDG_RUNTIME_DIR/bus" ]]; then',
+        '    fi',
+        '    if [[ ! -f "$HERE/.no_dbus" && "$ENCLOSER_NO_DBUS" != "1" ]]; then',
+        '        if [[ -n "$XDG_RUNTIME_DIR" && -e "$XDG_RUNTIME_DIR/bus" ]]; then',
         '            BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/bus" "$XDG_RUNTIME_DIR/bus")',
         '        fi',
         '    fi',
-        '    if [[ -n "$XAUTHORITY" && -f "$XAUTHORITY" ]]; then',
-        '        BWRAP_CMD+=(--ro-bind "$XAUTHORITY" "$XAUTHORITY")',
+        '    if [[ -d "/dev/shm" ]]; then',
+        '        BWRAP_CMD+=(--bind /dev/shm /dev/shm)',
         '    fi',
         '    if [[ -d "$HERE/userdata/linuxbrew" ]]; then',
         '        BWRAP_CMD+=(--bind "$HERE/userdata/linuxbrew" /home/linuxbrew/.linuxbrew)',

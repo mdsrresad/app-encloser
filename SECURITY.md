@@ -4,8 +4,11 @@
 
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| < 1.0   | :x:                |
+| >= 1.0.4 | :white_check_mark: (Current Supported Baseline) |
+| < 1.0.4  | :x: (Deprecated & Unsupported - Upgrade Required) |
+
+> [!WARNING]
+> Versions prior to 1.0.4 contained architectural vulnerabilities (uncontained `systemd` service execution on the host, uncontained script ingestion, and permissive user namespace bounds). Users on versions 1.0.0 through 1.0.3 must update to **1.0.4+** immediately.
 
 ## Reporting a Vulnerability
 
@@ -19,24 +22,24 @@ Security and isolation integrity are top priorities for App Encloser. If you dis
 
 ## Threat Model & Security Architecture
 
-App Encloser provides lightweight application containment on Linux desktops without root daemons. To maintain complete transparency, the table below documents exactly what is confined and what is shared:
+App Encloser provides lightweight application containment on Linux desktops without root daemons. To maintain complete transparency, the table below documents exactly what is confined, what is shared, and what can be toggled:
 
 ### Isolation Matrix
 
-| Subsystem / Resource | Private Application Environment | Strict Sandbox (`bwrap`) | System Integrated |
-| :--- | :--- | :--- | :--- |
-| **User Home (`$HOME`)** | Redirected to `userdata/home/` | Masked with isolated `tmpfs` + bound `userdata/home/` | Shared directly with host |
-| **XDG Paths (`$XDG_*`)** | Isolated in container `userdata/` | Isolated in container `userdata/` | Shared directly with host |
-| **Temporary Files (`/tmp`)** | Redirected `$TMPDIR` | Private container `/tmp` (`tmpfs`) | Shared host `/tmp` |
-| **Host Root Filesystem** | Writable by user permissions | Strictly read-only (`--ro-bind / /`) | Writable by user permissions |
-| **Container Directory** | Read-Write | Read-Write (`--bind` to app dir) | Read-Write |
-| **Process Table (PID)** | Shared with host user | Isolated PID namespace (`--unshare-pid`) | Shared with host user |
-| **IPC Resources** | Shared with host user | Isolated IPC namespace (`--unshare-ipc`) | Shared with host user |
-| **Hostname / Domain (UTS)**| Shared with host user | Isolated UTS namespace (`--unshare-uts`) | Shared with host user |
-| **Network Stack** | Shared with host | Shared with host (standard desktop net) | Shared with host |
-| **Display Server Socket** | Shared (`WAYLAND_DISPLAY` / X11) | Bound via `--bind` (read-write socket required for display communication) | Shared |
-| **Audio Subsystem** | Shared (PulseAudio / PipeWire) | Bound via `--bind` (read-write socket required for audio communication) | Shared |
-| **Session D-Bus** | Shared (`DBUS_SESSION_BUS_ADDRESS`)| Bound via `--bind` for desktop portals/notifications | Shared |
+| Subsystem / Resource | Private Application Environment | Strict Sandbox (`bwrap`) | Modular Sandbox Toggles | System Integrated |
+| :--- | :--- | :--- | :--- | :--- |
+| **User Home (`$HOME`)** | Redirected to `userdata/home/` | Masked with isolated `tmpfs` + bound `userdata/home/` | Always masked in Strict | Shared directly with host |
+| **XDG Paths (`$XDG_*`)** | Isolated in container `userdata/` | Isolated in container `userdata/` | Configurable | Shared directly with host |
+| **Temporary Files (`/tmp`)** | Redirected `$TMPDIR` | Private container `/tmp` (`tmpfs`) | Private tmpfs | Shared host `/tmp` |
+| **Host Root Filesystem** | Writable by user permissions | Strictly read-only (`--ro-bind / /`) | Read-only | Writable by user permissions |
+| **Container Directory** | Read-Write | Read-Write (`--bind` to app dir) | Read-Write | Read-Write |
+| **Process Table (PID)** | Shared with host user | Isolated PID namespace (`--unshare-pid`) | Isolated | Shared with host user |
+| **IPC Resources** | Shared with host user | Isolated IPC namespace (`--unshare-ipc`) | Isolated | Shared with host user |
+| **Hostname / Domain (UTS)**| Shared with host user | Isolated UTS namespace (`--unshare-uts`) | Isolated | Shared with host user |
+| **Network Stack** | Shared with host | Shared with host (standard desktop net) | **Isolated with `--no-net`** (`--unshare-net`) | Shared with host |
+| **Display Server Socket** | Shared (`WAYLAND_DISPLAY` / X11) | Bound via `--bind` (for graphical apps) | **Blocked with `--no-display`** (headless) | Shared |
+| **Audio Subsystem** | Shared (PulseAudio / PipeWire) | Bound via `--bind` (for desktop sound) | **Blocked with `--no-sound`** | Shared |
+| **Session D-Bus** | Shared (`DBUS_SESSION_BUS_ADDRESS`)| Bound via `--bind` (for portals/theming) | **Blocked with `--no-dbus`** | Shared |
 
 ---
 

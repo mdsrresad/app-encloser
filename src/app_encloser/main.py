@@ -19,7 +19,8 @@ from app_encloser.core import (
     resolve_container_dependencies, analyze_container_incompatibility,
     get_enclosing_level, set_enclosing_level, get_enclosing_level_details,
     find_container_folder, format_audit_report, handle_intercept_cmd,
-    sync_terminal_guard, uninstall_enclosed_app, uninstall_host_package
+    sync_terminal_guard, uninstall_enclosed_app, uninstall_host_package,
+    set_container_option, get_container_options
 )
 
 
@@ -345,24 +346,59 @@ def main() -> int:
             return 1
         app_name = resolved
         if len(argv) >= 3:
-            target_level = argv[2].strip().lower()
-            if target_level not in ("standard", "strict", "integrated"):
-                print("Error: Invalid level. Must be 'standard', 'strict', or 'integrated'.")
-                return 1
-            ok = set_enclosing_level(app_name, target_level)
-            if ok:
+            target_level = None
+            flags = []
+            for arg in argv[2:]:
+                low = arg.strip().lower()
+                if low in ("standard", "strict", "integrated"):
+                    target_level = low
+                elif low.startswith("--"):
+                    flags.append(low)
+            if target_level:
+                ok = set_enclosing_level(app_name, target_level)
+                if not ok:
+                    print(f"[ERROR] Failed to set enclosing level for {app_name}")
+                    return 1
                 info = get_enclosing_level_details(target_level)
                 print(f"[SUCCESS] Enclosing level for {app_name} updated to: {target_level} ({info['title']})")
-                return 0
-            else:
-                print(f"[ERROR] Failed to set enclosing level for {app_name}")
-                return 1
+            for fl in flags:
+                if fl in ("--no-net", "--offline"):
+                    set_container_option(app_name, "no_net", True)
+                    print(f"[OPTION] {app_name}: Network isolation enabled (--no-net)")
+                elif fl == "--net":
+                    set_container_option(app_name, "no_net", False)
+                    print(f"[OPTION] {app_name}: Network access enabled (--net)")
+                elif fl == "--no-display":
+                    set_container_option(app_name, "no_display", True)
+                    print(f"[OPTION] {app_name}: Display isolation enabled (--no-display)")
+                elif fl == "--display":
+                    set_container_option(app_name, "no_display", False)
+                    print(f"[OPTION] {app_name}: Display access enabled (--display)")
+                elif fl == "--no-dbus":
+                    set_container_option(app_name, "no_dbus", True)
+                    print(f"[OPTION] {app_name}: D-Bus isolation enabled (--no-dbus)")
+                elif fl == "--dbus":
+                    set_container_option(app_name, "no_dbus", False)
+                    print(f"[OPTION] {app_name}: D-Bus access enabled (--dbus)")
+                elif fl == "--no-sound":
+                    set_container_option(app_name, "no_sound", True)
+                    print(f"[OPTION] {app_name}: Sound isolation enabled (--no-sound)")
+                elif fl == "--sound":
+                    set_container_option(app_name, "no_sound", False)
+                    print(f"[OPTION] {app_name}: Sound access enabled (--sound)")
+            return 0
         else:
             cur = get_enclosing_level(app_name)
             info = get_enclosing_level_details(cur)
+            opts = get_container_options(app_name)
             print(f"Container: {app_name}")
             print(f"Current Enclosing Level: {cur} ({info['title']})")
             print(f"Description: {info['description']}")
+            print("Security Toggles:")
+            print(f"  • Network: {'Blocked (--no-net)' if opts.get('no_net') else 'Enabled'}")
+            print(f"  • Display: {'Disabled (--no-display)' if opts.get('no_display') else 'Enabled (Wayland/X11)'}")
+            print(f"  • D-Bus:   {'Disabled (--no-dbus)' if opts.get('no_dbus') else 'Enabled'}")
+            print(f"  • Sound:   {'Disabled (--no-sound)' if opts.get('no_sound') else 'Enabled'}")
             return 0
 
     if cmd in ("history", "audit", "--history", "--audit"):

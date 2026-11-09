@@ -438,6 +438,22 @@ def test_deb_package_build():
     os.remove(traversal_tar)
     shutil.rmtree(traversal_dir, ignore_errors=True)
 
+    import zipfile
+    traversal_zip = "/tmp/test_traversal.zip"
+    with zipfile.ZipFile(traversal_zip, "w") as zf:
+        zf.writestr("../../etc/pwned.txt", "attack")
+    traversal_zip_dir = "/tmp/test_zip_dir"
+    os.makedirs(traversal_zip_dir, exist_ok=True)
+    zip_failed = False
+    try:
+        backend.safe_extract_zip(zipfile.ZipFile(traversal_zip), traversal_zip_dir)
+    except RuntimeError:
+        zip_failed = True
+    assert zip_failed is True, "safe_extract_zip did not reject path traversal attempt!"
+    assert not os.path.exists("/tmp/etc/pwned.txt") and not os.path.exists("/etc/pwned.txt"), "Zip Slip wrote outside destination!"
+    os.remove(traversal_zip)
+    shutil.rmtree(traversal_zip_dir, ignore_errors=True)
+
     print_test(f"11. Debian Package Build & Binary Verification (v{__version__})", True,
                f"Package: app-encloser_{__version__}_all.deb ({deb_sz} bytes) | Executable verified.")
 
@@ -575,6 +591,23 @@ def test_enclosing_levels_engine():
     )
     assert cli_notfound.returncode != 0, "CLI should return non-zero for non-existent container"
     assert "does not exist in ~/EnclosedApps" in cli_notfound.stdout, "CLI should report non-existent container"
+
+    assert backend.set_container_option(folder, "no_net", True) is True
+    opts = backend.get_container_options(folder)
+    assert opts.get("no_net") is True
+    assert backend.set_container_option(folder, "no_net", False) is True
+    opts = backend.get_container_options(folder)
+    assert opts.get("no_net") is False
+
+    cli_opt = subprocess.run(
+        [sys.executable, os.path.join(SRC_DIR, "app_encloser", "main.py"), "level", folder, "strict", "--no-net", "--no-display"],
+        capture_output=True, text=True,
+        env=get_test_env()
+    )
+    assert cli_opt.returncode == 0, f"CLI option flag set failed: {cli_opt.stderr}"
+    opts2 = backend.get_container_options(folder)
+    assert opts2.get("no_net") is True
+    assert opts2.get("no_display") is True
 
     backend.set_enclosing_level(folder, "standard")
     nft_rc = backend.run_in_container(folder, ["bash", "-c", "echo 'table inet test {}' | nft -f -"])

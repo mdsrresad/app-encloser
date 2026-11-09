@@ -20,6 +20,10 @@ Zero background daemons. Zero root requirement. Instant native performance. Clea
 
 </div>
 
+> [!WARNING]
+> **Security Advisory for Versions Prior to v1.0.4:**
+> Releases prior to v1.0.4 contained architectural vulnerabilities (uncontained `systemd` service spawning on the host, uncontained script ingestion, and permissive user namespace bounds). All users of versions 1.0.0 through 1.0.3 must upgrade immediately to **v1.0.4+**. Versions `< 1.0.4` are deprecated and unsupported.
+
 ---
 
 ## Table of Contents
@@ -71,15 +75,16 @@ graph TD
 
 ## Comparison Matrix
 
-| Feature | App Encloser | Flatpak | Snap | Docker / Podman | Distrobox |
+| Feature | App Encloser | Firejail | Flatpak | Snap | Docker / Podman |
 | :--- | :---: | :---: | :---: | :---: | :---: |
-| **Ingest Any Raw Package / Script** | **Direct (.deb, tar, zip, sh)** | Manifest required | Snapcraft required | Dockerfile required | Container image |
-| **Root Background Daemon** | **None (0 MB)** | None | Yes (`snapd`, ~200MB) | Yes (`dockerd`) | Host daemon |
-| **Startup Overhead** | **Direct process / bwrap namespace exec** | Sandbox & portal IPC setup | SquashFS mount & AppArmor profile | Container daemon & runtime init | Container runtime init |
-| **Storage Portability** | **Single folder per app** | Split in `~/.var` | Split in `~/snap` | Docker volumes | Container storage |
-| **Clean Application Purge** | **Wipes container folder & desktop link** | Leaves config | Leaves revisions | `docker prune` | Container removal |
-| **AI Agent Guard (Exit Code 2)** | **Built-in (Opt-in shell interceptor)** | None | None | None | None |
-| **Isolated Multi-Python / Brew** | **Built-in** | Complex | Difficult | Separate container | Full OS image |
+| **Primary Use Case** | Self-contained app directories & ingestion | Security sandboxing for existing host binaries | Application distribution & runtime sandboxing | Canonical software distribution & confinement | Service & multi-container orchestration |
+| **Ingestion Format** | Direct `.deb`, tar, zip, `.AppImage`, shell script | Runs existing host binaries | Sandboxed Flathub / Flatpak manifest | Snapcraft package / store bundle | OCI Container image / Dockerfile |
+| **Privilege Model** | Unprivileged Bubblewrap (`bwrap`) | SUID root or unprivileged namespaces | Bubblewrap + portals (`xdg-desktop-portal`) | AppArmor + seccomp (`snapd` root daemon) | Root daemon or rootless user namespaces |
+| **Storage Architecture** | Portable folder per app (`~/EnclosedApps/`) | Standard host paths / private overlays | Centralized runtimes & `~/.var/app/` | SquashFS images & `~/snap/` | Layered image filesystem |
+| **Network Lockdown** | Toggleable per app (`--no-net`) | Built-in (`--net=none`, interface isolation) | Portal-managed or network permission toggle | AppArmor / interface slot mediation | Isolated bridge / host network flags |
+| **D-Bus Isolation** | Optional unbind (`--no-dbus`) | Filtered via `xdg-dbus-proxy` | Filtered via portals & `xdg-dbus-proxy` | Plugs / slots mediation | Typically unexposed |
+| **Cleanup on Removal** | Wipes container directory & desktop launcher | Reverts profile bindings; leaves host files | Leaves user data in `~/.var` unless purged | Leaves snapshot revisions | Container & volume prune commands |
+| **AI Agent Guard** | Built-in (interception with exit code 2) | None | None | None | None |
 
 ---
 
@@ -102,6 +107,19 @@ App Encloser provides three configurable isolation profiles per application:
    - *Security boundary note:* Strict Sandbox enforces kernel filesystem write protection and masks `$HOME`. Shared desktop sockets (X11 display, PulseAudio/PipeWire, session D-Bus) are provided for graphical operation; on X11, clients lack per-window input isolation (Wayland is recommended for full display isolation). Requires unprivileged user namespaces enabled on the host.
 3. **System Integrated:**
    - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management.
+
+#### Modular Security Toggles (Per-Container):
+Fine-tune the strict sandbox attack surface for each container individually via the CLI or UI:
+- `--no-net` (or `--offline`): Disconnects network access completely (`bwrap --unshare-net`).
+- `--no-display`: Isolates display server sockets; prevents Wayland/X11 and DRI rendering communication.
+- `--no-dbus`: Unbinds session D-Bus sockets and system machine ID.
+- `--no-sound`: Unbinds PulseAudio and PipeWire audio sockets and `/dev/snd`.
+
+Example:
+```bash
+# Enforce strict sandbox with network and D-Bus completely cut off
+app-encloser level MyUntrustedApp strict --no-net --no-dbus
+```
 
 ---
 
@@ -255,13 +273,14 @@ app-encloser kill <AppName>
 # Inspect container contents, libraries, and active PIDs
 app-encloser inspect <AppName>
 
-# View or change isolation level (standard, strict, integrated)
-app-encloser level <AppName> strict
+# View or change isolation level and security toggles
+app-encloser level <AppName>
+app-encloser level <AppName> strict --no-net --no-dbus
 
 # Audit all container and host installations
 app-encloser audit
 
-# Completely uninstall an application (100% zero-residual wipe)
+# Completely uninstall an application (removes container directory and desktop entries)
 app-encloser uninstall <AppName>
 
 # Manage terminal installation interceptor & host safety guard
@@ -294,51 +313,13 @@ App Encloser is an independent personal open-source project authored and maintai
 
 ## Verification & Automated Tests
 
-App Encloser is verified by 31 comprehensive automated test suites:
+App Encloser includes a comprehensive test suite of 31 automated test modules covering container lifecycle, user namespace confinement, path traversal defenses (Tar symlink traversal and Zip Slip), cryptographic updater verification, and CLI/MCP interfaces:
 
 ```bash
 python3 tests/verify_all.py
 ```
 
-```text
-================================================================
- App Encloser Automated Test & Verification Suite
-================================================================
-[✓ PASS] 1. Dynamic Metadata & Vector Monogram Generation
-[✓ PASS] 2. Container Lifecycle & 100% Zero-Residual Wipe
-[✓ PASS] 3. Canonical Desktop Launcher & Zero Duplicates
-[✓ PASS] 4. Self-Uninstall Engine & Safety Verification
-[✓ PASS] 5. Preferences & Installation Scope Engine
-[✓ PASS] 6. MCP Server Protocol (JSON-RPC 2.0 initialize & Tools)
-[✓ PASS] 7. CLI Interface & Self-Uninstall Flag Support
-[✓ PASS] 8. Force Stop / Kill & Container Inspection Engine
-[✓ PASS] 9. Granular Cache & User Data Reset Verification
-[✓ PASS] 10. Error, Crash & Incompatibility Diagnosis Engine
-[✓ PASS] 11. Debian Package Build & Binary Verification
-[✓ PASS] 12. Container-Level Package Ingestion & In-Container Helpers
-[✓ PASS] 13. Enclosing Isolation Levels & Non-Broken-Pipe Engine
-[✓ PASS] 14. Installation History, Command Recipe Tracking & Host Audit
-[✓ PASS] 15. Window Close Geometry & Dimension Saving
-[✓ PASS] 16. Per-Container Python/Runtime Isolation & Bwrap Tmpfs
-[✓ PASS] 17. Host Terminal Package Discovery & Multi-Source Purge
-[✓ PASS] 18. OS Protection Filters & Host Purge Safeguards
-[✓ PASS] 19. Audit Dialog Re-population Stability & Markup Escaping
-[✓ PASS] 20. Recursive Subdirectory Icon Scoring & Monogram Auto-Upgrade
-[✓ PASS] 21. Embedded encloser-install Syntax & Indentation Integrity
-[✓ PASS] 22. Multi-Line Repo Script Inference & Rootless Keyring Shims
-[✓ PASS] 23. CLI Usage Diagnostic & Strict Isolation Level Preservation
-[✓ PASS] 24. OS Baseline Lock & Reverse-Dependency Safety Analyzer
-[✓ PASS] 25. Scope Filtering (Recent & Heavy) & Live RAM Metrics
-[✓ PASS] 26. /usr/bin/install Disaster Prevention & Clean History Records
-[✓ PASS] 27. Container Universe Shims & Non-Self-Recursive Execution
-[✓ PASS] 28. Ollama, Claude CLI & Homebrew Detection, Wipe & Migration
-[✓ PASS] 29. Terminal Install Interceptor & AI Agent Guard Engine
-[✓ PASS] 30. Interactive User Guide Dialog & Sub-Millisecond Polling
-[✓ PASS] 31. Automated Container Anomaly Detection & Self-Repair Engine
-================================================================
- ALL 31 VERIFICATION TEST SUITES PASSED (100% SUCCESS)
-================================================================
-```
+All test suites run automatically on every push and pull request. You can inspect live test runs, execution logs, and CI status directly on [GitHub Actions CI](https://github.com/mdsrresad/app-encloser/actions/workflows/ci.yml).
 
 ---
 
