@@ -1,12 +1,13 @@
 Package: app-encloser
-Version: 1.0.2
+Version: 1.0.3
 Section: utils
 Priority: optional
 Architecture: all
-Depends: python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, bubblewrap
-Maintainer: Local Developer <sr@localhost>
-Description: Native Isolated Package & Application Manager with Bubblewrap Sandbox, GTK4/Libadwaita UI, and MCP Server
- App Encloser encloses any Linux application package (.deb, .AppImage, .tar.gz,
- .zip, .rpm, .snap, .jar, etc.) into a 100% self-contained directory inside
- ~/EnclosedApps/<AppName>/ with optional strict Bubblewrap filesystem sandboxing,
- threat and telemetry tracker scanning, and built-in JSON-RPC 2.0 MCP server.
+Depends: python3, python3-gi, gir1.2-gtk-4.0, gir1.2-adw-1, bubblewrap, binutils
+Recommends: squashfs-tools
+Maintainer: MD Shahriar Rezowan Resad <mdsrresad@gmail.com>
+Homepage: https://github.com/mdsrresad/app-encloser
+Description: Isolated Portable Application & Package Manager
+ App Encloser encloses Linux application packages (.deb, .AppImage, .tar.gz, etc.)
+ into self-contained user directories with private configurations, zero background
+ daemons, zero root requirements, and optional Bubblewrap filesystem sandboxing.

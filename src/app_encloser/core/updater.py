@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import hashlib
 import urllib.request
 import subprocess
 import shutil
@@ -21,6 +22,31 @@ def parse_version_tuple(v_str: str) -> Tuple[int, ...]:
         except ValueError:
             break
     return tuple(parts) or (0,)
+
+
+def verify_file_checksum(file_path: str, checksums_url: Optional[str]) -> bool:
+    if not checksums_url:
+        return True
+    try:
+        req = urllib.request.Request(checksums_url, headers={"User-Agent": f"AppEncloser/{__version__}"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            sums_text = resp.read().decode("utf-8")
+        base = os.path.basename(file_path)
+        expected = None
+        for line in sums_text.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 2 and (parts[1].lstrip("./*") == base or parts[1].endswith(base)):
+                expected = parts[0].lower()
+                break
+        if not expected:
+            return True
+        h = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            while chunk := f.read(65536):
+                h.update(chunk)
+        return h.hexdigest().lower() == expected
+    except Exception:
+        return False
 
 
 def check_for_updates() -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
@@ -50,6 +76,7 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
         deb_name = None
         tar_url = None
         tar_name = None
+        checksums_url = None
 
         for a in assets:
             name = a.get("name", "")
@@ -60,6 +87,8 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
             elif name.endswith(".tar.gz") and "universal" in name:
                 tar_url = download_url
                 tar_name = name
+            elif name in ("SHA256SUMS.txt", "SHA256SUMS"):
+                checksums_url = download_url
 
         details = {
             "tag_name": raw_tag,
@@ -71,6 +100,7 @@ def check_for_updates() -> Tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
             "deb_name": deb_name,
             "tar_url": tar_url,
             "tar_name": tar_name,
+            "checksums_url": checksums_url,
             "published_at": data.get("published_at", "")
         }
 
@@ -117,6 +147,16 @@ def perform_cli_update(download_only: bool = False) -> Tuple[bool, str]:
         except Exception as e:
             return False, f"Failed to download update package: {e}"
 
+        if details.get("checksums_url"):
+            print("[*] Verifying cryptographic SHA256 checksum...")
+            if not verify_file_checksum(deb_file, details["checksums_url"]):
+                try:
+                    os.remove(deb_file)
+                except Exception:
+                    pass
+                return False, "Security Error: SHA256 checksum verification failed! Downloaded package is corrupt or modified."
+            print("[*] SHA256 checksum verified successfully.")
+
         if download_only:
             return True, f"Package downloaded to {deb_file}. To install, run: sudo dpkg -i {deb_file}"
 
@@ -137,6 +177,16 @@ def perform_cli_update(download_only: bool = False) -> Tuple[bool, str]:
                 shutil.copyfileobj(resp, out_f)
         except Exception as e:
             return False, f"Failed to download update archive: {e}"
+
+        if details.get("checksums_url"):
+            print("[*] Verifying cryptographic SHA256 checksum...")
+            if not verify_file_checksum(tar_file, details["checksums_url"]):
+                try:
+                    os.remove(tar_file)
+                except Exception:
+                    pass
+                return False, "Security Error: SHA256 checksum verification failed! Downloaded archive is corrupt or modified."
+            print("[*] SHA256 checksum verified successfully.")
 
         return True, f"Universal update archive downloaded to {tar_file}. Extract and run: ./install.sh"
 

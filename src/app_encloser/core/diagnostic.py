@@ -367,9 +367,14 @@ def _analyze_container_incompatibility_inner(folder_name: str) -> Dict[str, Any]
             cat = "command_not_found"
             rec = "Executable binary or dynamic linker could not locate dependent binaries or libraries."
         elif last_exit_code == 126:
-            status_desc = "Permission Denied"
-            cat = "permission_denied"
-            rec = "Target executable lacks execution permissions. Run 'chmod +x' inside container."
+            if any(k in full_log.lower() for k in ("bubblewrap", "bwrap", "namespace", "unprivileged")):
+                status_desc = "Sandbox Boundary Failure / Bubblewrap Missing"
+                cat = "sandbox_failure"
+                rec = "Bubblewrap (bwrap) is missing or unprivileged user namespaces are disabled. Install bubblewrap or adjust container isolation level."
+            else:
+                status_desc = "Permission Denied / Execution Failed"
+                cat = "permission_denied"
+                rec = "Target executable lacks execution permissions, or container launcher failed. Check file permissions or container profile."
         elif "no such option '--no-sandbox'" in full_log.lower():
             status_desc = "CLI Tool (Unrecognized Flag)"
             cat = "cli_flag_mismatch"
@@ -543,8 +548,12 @@ def resolve_container_dependencies(folder_name: str, status_cb=None) -> Tuple[bo
 
         host_search_dirs = [
             "/usr/lib/x86_64-linux-gnu",
+            "/usr/lib/aarch64-linux-gnu",
+            "/usr/lib/arm-linux-gnueabihf",
             "/usr/lib",
             "/lib/x86_64-linux-gnu",
+            "/lib/aarch64-linux-gnu",
+            "/lib/arm-linux-gnueabihf",
             "/lib",
             "/usr/local/lib"
         ]

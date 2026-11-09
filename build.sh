@@ -45,7 +45,6 @@ if [[ "$PACKAGE_ONLY" -eq 0 ]]; then
 
     rm -rf "$USER_SITE/app_encloser"
     cp -r src/app_encloser "$USER_SITE/"
-    rm -f "$USER_SITE/usercustomize.py"
     find "$USER_SITE/app_encloser" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
     echo "Updated $LOCAL_BIN/app-encloser and $USER_SITE/app_encloser"
 

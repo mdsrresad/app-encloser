@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.encloser.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>App Encloser</name>
+  <summary>Isolated Portable Application &amp; Package Manager</summary>
+  <description>
+    <p>
+      App Encloser encloses Linux application packages (.deb, .AppImage, .tar.gz, etc.)
+      into self-contained user directories with private configurations, zero background
+      daemons, and optional Bubblewrap filesystem sandboxing.
+    </p>
+  </description>
+  <launchable type="desktop-id">app.encloser.desktop</launchable>
+  <url type="homepage">https://github.com/mdsrresad/app-encloser</url>
+  <url type="bugtracker">https://github.com/mdsrresad/app-encloser/issues</url>
+  <developer id="mdsrresad.github.io">
+    <name>MD Shahriar Rezowan Resad</name>
+  </developer>
+  <icon type="stock">app-encloser</icon>
+  <categories>
+    <category>System</category>
+    <category>PackageManager</category>
+    <category>Utility</category>
+  </categories>
+  <releases>
+    <release version="1.0.3" date="2026-11-09"/>
+    <release version="1.0.2" date="2026-11-09"/>
+    <release version="1.0.1" date="2026-11-09"/>
+    <release version="1.0.0" date="2026-11-08"/>
+  </releases>
+</component>

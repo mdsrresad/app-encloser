@@ -37,7 +37,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
-            TAG="v1.0.2"
+            TAG="v$(python3 -c "import re; f=open('src/app_encloser/__init__.py'); m=re.search(r'__version__\s*=\s*[\"\']([^\"\']+)[\"\']', f.read()); print(m.group(1))")"
           fi
           RAW_VER="${TAG#v}"
           sed -n "/## \\[$RAW_VER\\]/,/## \\[/p" CHANGELOG.md | sed '$d' > release_body.md

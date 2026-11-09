@@ -389,8 +389,15 @@ for tf in target_files:
     sudo_code = """#!/usr/bin/env bash
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -E|-u|-g|-p|-h|-k|-K|-v|-V)
+        -u|-g|-p)
+            shift 2
+            ;;
+        -E|-h|-k|-K|-v|-V|-s|-i)
             shift
+            ;;
+        --)
+            shift
+            break
             ;;
         *)
             break
@@ -424,11 +431,17 @@ if [[ "$1" == "update" ]]; then
             -o Dir::State::lists="$lists_dir" \
             -o Dir::Cache="$cache_dir" \
             -o Debug::NoLocking=1 update
+        EC=$?
+        if [[ $EC -ne 0 ]]; then
+            echo "[Container APT] Package index update failed with exit code $EC." >&2
+            exit $EC
+        fi
+        echo "[Container APT] Isolated package metadata is synchronized."
+        exit 0
+    else
+        echo "[Container APT] No isolated sources configured; using host package index."
+        exit 0
     fi
-    echo "Reading package lists... Done"
-    echo "Building dependency tree... Done"
-    echo "[Container APT] Isolated package metadata is synchronized."
-    exit 0
 fi
 
 if [[ "$1" == "install" ]]; then
@@ -532,6 +545,30 @@ def fix_links(dest_dir: str):
                     os.chmod(t, 0o755)
                 except Exception:
                     pass
+
+def is_safe_exec(p: str) -> bool:
+    if not p or not isinstance(p, str):
+        return False
+    bad_chars = (';', '&', '|', '`', '$', '(', ')', '<', '>', '\\n', '\\r', '\\\\', '"')
+    if any(c in p for c in bad_chars):
+        return False
+    clean = p.strip()
+    if clean.startswith("/") or clean.startswith("-") or ".." in clean.split("/"):
+        return False
+    return True
+
+def resolve_exec(app_f: str) -> str:
+    cand_dirs = [os.path.join(app_f, "usr", "bin"), os.path.join(app_f, "bin"), os.path.join(app_f, "usr", "games"), os.path.join(app_f, "opt")]
+    for cd in cand_dirs:
+        if os.path.isdir(cd):
+            for root, _, files in os.walk(cd):
+                for fn in sorted(files):
+                    fp = os.path.join(root, fn)
+                    if os.access(fp, os.X_OK) and not fn.endswith((".so", ".a", ".png", ".desktop", ".xml", ".svg")):
+                        rel = os.path.relpath(fp, app_f)
+                        if is_safe_exec(rel):
+                            return rel
+    return ""
 
 def main():
     if len(sys.argv) < 2:
@@ -711,12 +748,13 @@ def main():
             try:
                 with open(dp, "r", encoding="utf-8") as f:
                     for line in f:
-                        if line.startswith("Name=") and not display_name or display_name == folder_name:
+                        if line.startswith("Name=") and (not display_name or display_name == folder_name):
                             display_name = line.split("=", 1)[1].strip()
                         elif line.startswith("Exec=") and not target_bin:
                             raw = line.split("=", 1)[1].strip()
                             clean = re.sub(r" %[a-zA-Z]", "", raw).split()[0].lstrip("/")
-                            target_bin = clean
+                            if is_safe_exec(clean):
+                                target_bin = clean
                         elif line.startswith("StartupWMClass="):
                             wm_class = line.split("=", 1)[1].strip()
                         elif line.startswith("Icon=") and not icon_source:
@@ -728,19 +766,19 @@ def main():
                 pass
 
     if not target_bin:
-        from app_encloser.core.container import resolve_executable
-        target_bin = resolve_executable(app_files, "")
+        target_bin = resolve_exec(app_files)
 
-    if target_bin:
+    if target_bin and is_safe_exec(target_bin):
+        safe_bin = target_bin.replace("'", "'\\''")
         with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:
-            f.write(target_bin)
+            f.write(safe_bin)
         launch_sh = os.path.join(app_dir, "launch.sh")
         if os.path.isfile(launch_sh):
             try:
                 with open(launch_sh, "r", encoding="utf-8") as lf:
                     lcontent = lf.read()
-                new_lcontent = re.sub(r"REL_EXEC='[^']*'", f"REL_EXEC='{target_bin}'", lcontent)
-                new_lcontent = re.sub(r'TARGET_BIN="\\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{target_bin}"', new_lcontent)
+                new_lcontent = re.sub(r"REL_EXEC='[^']*'", f"REL_EXEC='{safe_bin}'", lcontent)
+                new_lcontent = re.sub(r'TARGET_BIN="\\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{safe_bin}"', new_lcontent)
                 with open(launch_sh, "w", encoding="utf-8") as lf:
                     lf.write(new_lcontent)
             except Exception:
@@ -1168,10 +1206,10 @@ def uninstall_enclosed_app(folder_name: str):
             if os.path.islink(fp):
                 try:
                     tgt = os.path.realpath(fp)
-                    if app_dir_path in tgt or not os.path.exists(tgt):
+                    if app_dir_path in tgt or (f"/EnclosedApps/{folder_name}" in tgt and not os.path.exists(tgt)):
                         should_remove = True
                 except Exception:
-                    should_remove = True
+                    pass
             elif os.path.isfile(fp):
                 try:
                     with open(fp, "r", errors="ignore") as f:
@@ -1181,12 +1219,7 @@ def uninstall_enclosed_app(folder_name: str):
                 except Exception:
                     pass
 
-            norm_fn = fn.lower().replace("-", "").replace("_", "")
-            if norm_fn.startswith(norm_fldr) or norm_fn == f"{norm_fldr}.desktop":
-                should_remove = True
-            if norm_disp and (norm_fn.startswith(norm_disp) or norm_fn == f"{norm_disp}.desktop"):
-                should_remove = True
-            if norm_wm and (norm_fn.startswith(norm_wm) or norm_fn == f"{norm_wm}.desktop"):
+            if fn in (f"{folder_name}.desktop", f"app.encloser.{folder_name}.desktop"):
                 should_remove = True
 
             if should_remove:
@@ -1207,11 +1240,14 @@ def uninstall_enclosed_app(folder_name: str):
     mark_as_uninstalled(folder_name)
 
     if os.path.isdir(ICONS_DIR):
+        target_icon_names = {
+            f"{folder_name}.png", f"{folder_name}.svg",
+            f"{folder_name.lower()}.png", f"{folder_name.lower()}.svg",
+            f"app-encloser-{folder_name.lower()}.png", f"app-encloser-{folder_name.lower()}.svg"
+        }
         for root_d, _, files in os.walk(ICONS_DIR):
             for fn in files:
-                low_fn = fn.lower().replace("-", "").replace("_", "")
-                low_fldr = folder_name.lower().replace("-", "").replace("_", "")
-                if low_fldr in low_fn:
+                if fn in target_icon_names:
                     try:
                         os.remove(os.path.join(root_d, fn))
                     except Exception:
@@ -1328,22 +1364,13 @@ def uninstall_host_package(target_info: Dict[str, Any], status_cb=None) -> Tuple
                     os.remove(cand_f)
                 except Exception:
                     pass
-        for cand_d in (
-            os.path.join(REAL_HOME, ".claude"),
-            os.path.expanduser("~/.claude"),
-        ):
-            if os.path.isdir(cand_d):
-                try:
-                    shutil.rmtree(cand_d, ignore_errors=True)
-                except Exception:
-                    pass
         for cfg_f in (
             os.path.join(REAL_HOME, ".claude.json"),
             os.path.expanduser("~/.claude.json"),
         ):
             if os.path.isfile(cfg_f):
                 try:
-                    os.remove(cfg_f)
+                    shutil.copyfile(cfg_f, f"{cfg_f}.bak")
                 except Exception:
                     pass
         mark_as_uninstalled(folder_or_name)
@@ -1583,13 +1610,10 @@ def install_any_package(pkg_path: str, status_cb=None, scope: Optional[str] = No
     with open(os.path.join(app_dir, ".wayland_id"), "w", encoding="utf-8") as f:
         f.write(wm_class)
 
-    from app_encloser.core.container import is_network_or_daemon_app, set_enclosing_level
+    from app_encloser.core.container import set_enclosing_level
     from app_encloser.core.config import get_setting
-    if is_network_or_daemon_app(folder_name):
-        set_enclosing_level(folder_name, "integrated")
-    else:
-        default_strict = get_setting("strict_sandbox_by_default", True)
-        set_enclosing_level(folder_name, "strict" if default_strict else "standard")
+    default_strict = get_setting("strict_sandbox_by_default", True)
+    set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
     write_launch_script(app_dir, rel_exec, fmt)
     desktop_icon = desk_info.get("Icon")
@@ -1814,13 +1838,10 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
         if not post_exec:
             post_exec = resolve_executable(app_files, "")
 
-        from app_encloser.core.container import is_network_or_daemon_app, set_enclosing_level
+        from app_encloser.core.container import set_enclosing_level
         from app_encloser.core.config import get_setting
-        if is_network_or_daemon_app(folder_name):
-            set_enclosing_level(folder_name, "integrated")
-        else:
-            default_strict = get_setting("strict_sandbox_by_default", True)
-            set_enclosing_level(folder_name, "strict" if default_strict else "standard")
+        default_strict = get_setting("strict_sandbox_by_default", True)
+        set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
         if post_exec:
             with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:

@@ -63,29 +63,60 @@ def extract_rpm(rpm_path: str, target_dir: str) -> bool:
 
 def extract_appimage(appimage_path: str, target_dir: str) -> bool:
     abs_app = os.path.abspath(appimage_path)
-    try:
-        os.chmod(abs_app, os.stat(abs_app).st_mode | 0o111)
-        res = subprocess.run([abs_app, "--appimage-extract"], cwd=target_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        squash = os.path.join(target_dir, "squashfs-root")
-        if os.path.isdir(squash):
-            for item in os.listdir(squash):
-                s = os.path.join(squash, item)
-                d = os.path.join(target_dir, item)
-                if os.path.exists(d):
-                    if os.path.isdir(d):
-                        shutil.rmtree(d, ignore_errors=True)
-                    else:
-                        os.remove(d)
-                shutil.move(s, d)
-            shutil.rmtree(squash, ignore_errors=True)
-            return True
-    except Exception:
-        pass
+    target_dir = os.path.abspath(target_dir)
+    os.makedirs(target_dir, exist_ok=True)
 
-    if shutil.which("7z"):
+    if shutil.which("unsquashfs"):
         try:
-            res = subprocess.run(["7z", "x", "-y", f"-o{target_dir}", abs_app], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if res.returncode == 0:
+            res = subprocess.run(
+                ["unsquashfs", "-f", "-d", target_dir, abs_app],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            if res.returncode == 0 and os.listdir(target_dir):
+                return True
+        except Exception:
+            pass
+
+    seven_z = shutil.which("7z") or shutil.which("7za")
+    if seven_z:
+        try:
+            res = subprocess.run(
+                [seven_z, "x", "-y", f"-o{target_dir}", abs_app],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+            if res.returncode == 0 and os.listdir(target_dir):
+                return True
+        except Exception:
+            pass
+
+    if shutil.which("bwrap"):
+        try:
+            os.chmod(abs_app, os.stat(abs_app).st_mode | 0o111)
+            bwrap_cmd = [
+                "bwrap",
+                "--die-with-parent",
+                "--ro-bind", "/", "/",
+                "--tmpfs", "/tmp",
+                "--tmpfs", os.path.expanduser("~"),
+                "--bind", target_dir, target_dir,
+                "--ro-bind", abs_app, "/tmp/app.appimage",
+                "/tmp/app.appimage", "--appimage-extract"
+            ]
+            res = subprocess.run(bwrap_cmd, cwd=target_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            squash = os.path.join(target_dir, "squashfs-root")
+            if os.path.isdir(squash):
+                for item in os.listdir(squash):
+                    s = os.path.join(squash, item)
+                    d = os.path.join(target_dir, item)
+                    if os.path.exists(d):
+                        if os.path.isdir(d):
+                            shutil.rmtree(d, ignore_errors=True)
+                        else:
+                            os.remove(d)
+                    shutil.move(s, d)
+                shutil.rmtree(squash, ignore_errors=True)
                 return True
         except Exception:
             pass

@@ -10,12 +10,15 @@ ENCLOSED_DIR = os.path.join(REAL_HOME, "EnclosedApps")
 APPS_DIR = os.path.join(REAL_HOME, ".local", "share", "applications")
 ICONS_DIR = os.path.join(REAL_HOME, ".local", "share", "icons", "hicolor")
 LOCAL_BIN = os.path.join(REAL_HOME, ".local", "bin")
-CONFIG_DIR = os.path.join(REAL_HOME, ".config", "app-encloser")
-CACHE_DIR = os.path.join(REAL_HOME, ".cache", "app-encloser")
+CONFIG_DIR = os.environ.get("APP_ENCLOSER_CONFIG_DIR") or os.path.join(REAL_HOME, ".config", "app-encloser")
+CACHE_DIR = os.environ.get("APP_ENCLOSER_CACHE_DIR") or os.path.join(REAL_HOME, ".cache", "app-encloser")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
 
-for d in (ENCLOSED_DIR, APPS_DIR, ICONS_DIR, LOCAL_BIN, CONFIG_DIR, CACHE_DIR):
-    os.makedirs(d, exist_ok=True)
+
+def ensure_base_dirs():
+    for d in (ENCLOSED_DIR, APPS_DIR, ICONS_DIR, LOCAL_BIN, CONFIG_DIR, CACHE_DIR):
+        os.makedirs(d, exist_ok=True)
+
 
 DEFAULT_SETTINGS: Dict[str, Any] = {
     "install_scope": "isolated",
@@ -44,7 +47,6 @@ def load_settings() -> Dict[str, Any]:
         pass
     try:
         if os.path.isfile(SETTINGS_FILE):
-            import time
             bak = f"{SETTINGS_FILE}.corrupt.{int(time.time())}"
             os.rename(SETTINGS_FILE, bak)
             save_settings(dict(DEFAULT_SETTINGS))
@@ -97,7 +99,7 @@ def get_dir_size(path: str, max_age_seconds: float = 300.0) -> str:
         return "0 B"
     cached = _DIR_SIZE_CACHE.get(path)
     now = time.time()
-    if cached and (now - cached[1]) < max_age_seconds:
+    if cached and (now - cached[1]) < max_age_seconds and cached[2]:
         return cached[2]
     try:
         size_str = subprocess.check_output(
@@ -121,7 +123,14 @@ def get_dir_size_bytes(path: str, max_age_seconds: float = 300.0) -> int:
         raw_b = int(subprocess.check_output(
             ["du", "-sb", path], stderr=subprocess.DEVNULL, timeout=1.0
         ).decode().split()[0])
-        fmt = get_dir_size(path, max_age_seconds=max_age_seconds)
+        fmt = cached[2] if (cached and cached[2]) else ""
+        if not fmt:
+            try:
+                fmt = subprocess.check_output(
+                    ["du", "-sh", path], stderr=subprocess.DEVNULL, timeout=1.0
+                ).decode().split()[0]
+            except Exception:
+                fmt = "..."
         _DIR_SIZE_CACHE[path] = (raw_b, now, fmt)
         return raw_b
     except Exception:

@@ -61,7 +61,6 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
         os.path.join(APPS_DIR, "app.encloser.desktop"),
         os.path.join(APPS_DIR, "AppEncloser.desktop"),
         os.path.join(REAL_HOME, ".local", "lib", cur_py, "site-packages", "app_encloser"),
-        os.path.join(REAL_HOME, ".local", "lib", cur_py, "site-packages", "usercustomize.py"),
         os.path.join(REAL_HOME, ".config", "app-encloser"),
         os.path.join(REAL_HOME, ".cache", "app-encloser"),
     ]
@@ -71,7 +70,6 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
         for entry in os.listdir(py_lib_base):
             if entry.startswith("python3."):
                 targets_to_remove.append(os.path.join(py_lib_base, entry, "site-packages", "app_encloser"))
-                targets_to_remove.append(os.path.join(py_lib_base, entry, "site-packages", "usercustomize.py"))
 
     for t in targets_to_remove:
         try:
@@ -127,5 +125,31 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
         )
     except Exception:
         pass
+
+    is_dpkg_pkg = False
+    try:
+        chk = subprocess.run(["dpkg", "-s", "app-encloser"], capture_output=True, text=True)
+        if chk.returncode == 0 and "Status: install ok installed" in chk.stdout:
+            is_dpkg_pkg = True
+    except Exception:
+        pass
+
+    if is_dpkg_pkg:
+        has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        purged = False
+        if shutil.which("pkexec") and has_display:
+            try:
+                res = subprocess.run(["pkexec", "dpkg", "--purge", "app-encloser"], capture_output=True)
+                purged = (res.returncode == 0)
+            except Exception:
+                pass
+        elif os.getuid() == 0:
+            try:
+                res = subprocess.run(["dpkg", "--purge", "app-encloser"], capture_output=True)
+                purged = (res.returncode == 0)
+            except Exception:
+                pass
+        if not purged:
+            return True, "App Encloser uninstalled. Note: Debian package registration remains in system database. Run 'sudo dpkg -P app-encloser' to purge it completely."
 
     return True, "App Encloser and enclosed applications have been completely uninstalled."

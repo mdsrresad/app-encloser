@@ -280,7 +280,7 @@ def get_enclosing_level_details(level: str) -> Dict[str, str]:
             "level": "strict",
             "title": "Strict Sandbox",
             "badge": "Strict Sandbox",
-            "description": "Kernel namespace virtualization via Bubblewrap (bwrap). Masks host filesystems and home directory with tmpfs. Zero leak guarantee.",
+            "description": "Kernel namespace isolation via Bubblewrap (bwrap). Mounts host root read-only, masks host home with private tmpfs, and isolates runtime data.",
             "badge_css": "badge-level-strict"
         }
     elif lvl == "integrated":
@@ -288,14 +288,14 @@ def get_enclosing_level_details(level: str) -> Dict[str, str]:
             "level": "integrated",
             "title": "System Integrated",
             "badge": "Integrated",
-            "description": "Containerized binaries and data enclosed in ~/EnclosedApps, with direct system network and service access enabled for background daemons and VPNs.",
+            "description": "Direct host integration. Application data resides in container directory, but executes without filesystem restrictions or namespace isolation.",
             "badge_css": "badge-level-integrated"
         }
     return {
         "level": "standard",
-        "title": "Standard Isolated",
-        "badge": "Isolated",
-        "description": "Dedicated isolated $HOME and XDG data inside container. Dedicated portable environment preventing global clutter.",
+        "title": "Private Application Environment",
+        "badge": "Private Environment",
+        "description": "Directory and configuration separation. Redirects $HOME and XDG data inside the container to prevent host clutter (not a kernel security boundary).",
         "badge_css": "badge-level-standard"
     }
 
@@ -474,7 +474,7 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        fi',
         '    fi',
         '    if [[ -n "$XAUTHORITY" && -f "$XAUTHORITY" ]]; then',
-        '        BWRAP_CMD+=(--bind "$XAUTHORITY" "$XAUTHORITY")',
+        '        BWRAP_CMD+=(--ro-bind "$XAUTHORITY" "$XAUTHORITY")',
         '    fi',
         '    if [[ -d "$HERE/userdata/linuxbrew" ]]; then',
         '        BWRAP_CMD+=(--bind "$HERE/userdata/linuxbrew" /home/linuxbrew/.linuxbrew)',
@@ -498,23 +498,6 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'else',
         '    RUN_CMD=("$TARGET_BIN" $SBOX_FLAG "$@")',
         'fi',
-        'for sfile in "$HERE/app_files"/etc/systemd/system/*.service "$HERE/app_files"/usr/lib/systemd/system/*.service "$HERE/app_files"/lib/systemd/system/*.service; do',
-        '    [[ -f "$sfile" ]] || continue',
-        '    EXEC_CMD="$(grep -E "^ExecStart=" "$sfile" 2>/dev/null | head -n 1 | cut -d= -f2-)"',
-        '    [[ -n "$EXEC_CMD" ]] || continue',
-        '    D_RAW="$(echo "$EXEC_CMD" | awk \'{print $1}\')"',
-        '    D_REL="${D_RAW#/}"',
-        '    if [[ -x "$HERE/app_files/$D_REL" ]]; then',
-        '        D_RUN="$HERE/app_files/$D_REL"',
-        '        D_ARGS="$(echo "$EXEC_CMD" | cut -d\' \' -f2-)"',
-        '        if ! pgrep -f "$D_RUN" >/dev/null 2>&1; then',
-        '            nohup "$D_RUN" $D_ARGS >"$LOGS_DIRECTORY/$(basename "$D_RAW").log" 2>&1 &',
-        '            DPID=$!',
-        '            DAEMON_PIDS+=("$DPID")',
-        '            echo "$DPID" >> "$PID_FILE"',
-        '        fi',
-        '    fi',
-        'done',
         'if [[ "$IS_CUSTOM_CMD" -eq 1 ]]; then',
         '    cd "$HOME" 2>/dev/null || cd "$HERE"',
         '    if [[ -t 1 ]]; then',

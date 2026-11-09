@@ -15,7 +15,7 @@
 
 **App Encloser** encapsulates **any** Linux application package (`.deb`, `.AppImage`, `.tar.gz`, `.zip`, `.rpm`, `.jar`, or arbitrary terminal install scripts) into an isolated, self-contained, portable directory inside `~/EnclosedApps/<AppName>/`.
 
-Zero background daemons. Zero root requirement. Instant native performance. 100% zero-residual uninstallation.
+Zero background daemons. Zero root requirement. Instant native performance. Clean application management.
 
 </div>
 
@@ -49,7 +49,7 @@ Linux packaging has traditionally forced users to choose between system pollutio
 2. **Flatpak & Snap:** Require upstream maintainers to build and publish dedicated manifests. They enforce rigid runtime dependencies, consume hundreds of megabytes of duplicate base runtimes, or require root background daemons.
 3. **Docker & Podman:** Designed for server services, requiring heavy base images (500MB - 2GB), complex GPU/Wayland socket forwarding hacks, and high memory overhead.
 
-**App Encloser solves this completely.** It uses Linux user namespaces and **Bubblewrap** (`bwrap`) to enclose arbitrary software directly into a lightweight, portable folder.
+**App Encloser solves this.** It uses Linux user namespaces and **Bubblewrap** (`bwrap`) to enclose arbitrary software directly into a lightweight, portable folder.
 
 ```mermaid
 graph TD
@@ -74,10 +74,10 @@ graph TD
 | :--- | :---: | :---: | :---: | :---: | :---: |
 | **Ingest Any Raw Package / Script** | **Direct (.deb, tar, zip, sh)** | Manifest required | Snapcraft required | Dockerfile required | Container image |
 | **Root Background Daemon** | **None (0 MB)** | None | Yes (`snapd`, ~200MB) | Yes (`dockerd`) | Host daemon |
-| **Startup Overhead** | **Instant native (Standard) / ~20-50 ms (Strict bwrap)** | 50-200 ms | 200-800 ms (squashfs loop) | 300-1000 ms | 200-800 ms |
+| **Startup Overhead** | **Sub-process invocation / Minimal container overhead** | ~50-200 ms | ~200-800 ms (squashfs loop) | ~300-1000 ms | ~200-800 ms |
 | **Storage Portability** | **Single folder per app** | Split in `~/.var` | Split in `~/snap` | Docker volumes | Container storage |
-| **100% Zero-Residual Wipe** | **Instant (Delete folder)** | Leaves config | Leaves revisions | `docker prune` | Container removal |
-| **AI Agent Guard (Exit Code 2)** | **Built-in (Opt-in)** | None | None | None | None |
+| **Clean Application Purge** | **Wipes container folder & desktop link** | Leaves config | Leaves revisions | `docker prune` | Container removal |
+| **AI Agent Guard (Exit Code 2)** | **Built-in (Opt-in shell interceptor)** | None | None | None | None |
 | **Isolated Multi-Python / Brew** | **Built-in** | Complex | Difficult | Separate container | Full OS image |
 
 ---
@@ -88,17 +88,18 @@ graph TD
 
 App Encloser provides three configurable isolation profiles per application:
 
-1. **Standard Isolated (Default):**
+1. **Private Application Environment (Standard):**
    - Redirects `$HOME`, `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME`, and `$TMPDIR` into the application's `userdata/` folder.
-   - Applications see and use system libraries without polluting the user's home directory.
-2. **Strict Sandbox (Bubblewrap Virtualization):**
+   - Applications access system libraries without polluting the user's home directory.
+   - *Note:* This provides filesystem organization and user configuration separation, not an unprivileged kernel security boundary.
+2. **Strict Sandbox (Bubblewrap Kernel Namespaces):**
    - Spawns unprivileged user namespaces via Bubblewrap (`bwrap`).
-   - Mounts the host root filesystem strictly read-only (`--ro-bind / /`), protecting system binaries and configuration from unauthorized tampering.
+   - Mounts the host root filesystem strictly read-only (`--ro-bind / /`), protecting system binaries and configuration from unauthorized writes.
    - Masks the real host home directory with an isolated `tmpfs` layer.
-   - Preserves Wayland/X11 and PulseAudio/PipeWire sockets for native desktop integration.
+   - Passes Wayland/X11 and PulseAudio/PipeWire sockets for interactive desktop integration.
    - Binds the container's directory read-write, strictly preventing modifications outside `~/EnclosedApps/<AppName>/`.
 3. **System Integrated:**
-   - For system utilities, daemons, or network tools (e.g. VPNs) that require direct host visibility while maintaining centralized container management.
+   - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management.
 
 ---
 
@@ -107,7 +108,7 @@ App Encloser provides three configurable isolation profiles per application:
 Every enclosed container acts as its own self-contained environment:
 
 - **Interactive Shell:** Launching `app-encloser shell <app>` opens a dedicated container terminal with a custom colored prompt: `[Universe: <app>] ~$`.
-- **Rootless APT & Package Swapping:** Run `sudo apt install <pkg>` or `sudo apt install <pkg>=<version>` inside the container. Package dependencies are downloaded and extracted into `app_files/` without touching the host system.
+- **Rootless APT & Package Swapping:** Run `sudo apt install <pkg>` or `sudo apt install <pkg>=<version>` inside the container. Package archives are downloaded and extracted into `app_files/` without touching the host system.
 - **Rootless Keyring Redirection:** Transparently intercepts `/etc/apt/keyrings` and `/usr/share/keyrings` and routes them to `userdata/keyrings/`.
 - **`encloser-python <version>`:** Download and use isolated Python versions (e.g. Python 3.10, 3.11, 3.12) inside that specific container without interfering with host Python.
 - **`encloser-brew install <pkg>`:** Containerized Homebrew installation isolated in `userdata/linuxbrew/`.
@@ -116,10 +117,10 @@ Every enclosed container acts as its own self-contained environment:
 
 ### Terminal & AI Agent Guard
 
-When enabled (opt-in via Settings or `app-encloser guard enable`), App Encloser configures an intelligent interceptor script (`~/.config/app-encloser/shell_guard.sh`):
+When enabled (opt-in via Settings or `app-encloser guard enable`), App Encloser configures an interceptor script (`~/.config/app-encloser/shell_guard.sh`):
 
-- **Human Terminal Protection:** If you run `sudo apt install`, `pip install`, `npm install -g`, or `curl | bash`, the terminal presents an interactive menu offering to enclose the application cleanly into `~/EnclosedApps/` instead of polluting the host OS.
-- **Autonomous AI Agent Interceptor:** Non-interactive environments and AI agent processes (Claude Code, Cursor, Aider, Copilot CLI, etc.) are detected via environment signals. Unsafe host modifications are intercepted with **Exit Code 2** and a structured instruction message directing the agent to use `app-encloser install <pkg>`.
+- **Interactive Terminal Protection:** When running `sudo apt install`, `pip install`, `npm install -g`, or `cargo install` in interactive bash/zsh sessions, the terminal presents an interactive menu offering to enclose the application cleanly into `~/EnclosedApps/` instead of polluting the host OS.
+- **Autonomous AI Agent Interceptor:** Non-interactive environments and AI agent processes (Claude Code, Cursor, Aider, Copilot CLI, etc.) with active detection environment variables are intercepted with **Exit Code 2** and a structured instruction message directing the agent to use `app-encloser install <pkg>`.
 
 ---
 

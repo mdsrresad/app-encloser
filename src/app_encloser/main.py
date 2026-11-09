@@ -151,11 +151,17 @@ def main() -> int:
                     ret = 1
             return ret
         elif "update" in sub:
-            print("[*] App Encloser APT Proxy: System repositories and metadata ready.")
-            return 0
+            update_cmd = ["apt-get", "update"]
+            if os.getuid() != 0 and shutil.which("sudo"):
+                update_cmd = ["sudo", "apt-get", "update"]
+            res = subprocess.run(update_cmd)
+            return res.returncode
         else:
-            print(f"[*] App Encloser APT Proxy: Unknown apt command '{' '.join(sub)}'")
-            return 0
+            passthrough = ["apt-get"] + sub
+            if os.getuid() != 0 and shutil.which("sudo"):
+                passthrough = ["sudo", "apt-get"] + sub
+            res = subprocess.run(passthrough)
+            return res.returncode
 
     if cmd in ("install", "install-into"):
         scope = None

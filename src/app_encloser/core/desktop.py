@@ -131,7 +131,9 @@ def ensure_clean_desktop_environment():
             fp = os.path.join(APPS_DIR, fn)
             if os.path.islink(fp) and not os.path.exists(fp):
                 try:
-                    os.remove(fp)
+                    target = os.readlink(fp)
+                    if ENCLOSED_DIR in target or "/EnclosedApps/" in target:
+                        os.remove(fp)
                 except Exception:
                     pass
 

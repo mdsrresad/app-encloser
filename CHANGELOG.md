@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.3] - 2026-11-09
+
+### Security & Hardening
+- **Eliminated Host Daemon Execution (P0):** Excised uncontained `systemd` service spawn loop from container launch scripts; bundled background services no longer execute unconfined on the host outside Bubblewrap.
+- **Passive Safe AppImage Ingestion (P0):** Replaced direct host execution of untrusted AppImages (`--appimage-extract`) with passive SquashFS extraction via `unsquashfs` and `7z`, with isolated Bubblewrap container containment for any dynamic fallback.
+- **Read-Only Xauthority Binding:** Sandboxed containers now mount `$XAUTHORITY` strictly read-only (`--ro-bind`), preventing untrusted containers from modifying or corrupting host X11 authorization data.
+- **Cryptographic Updater Verification:** Added mandatory `SHA256SUMS.txt` checksum verification during automated updates; unverified or corrupted packages abort before installation.
+- **Preserved User Customizations & Credentials:** Removed destructive deletion of user `usercustomize.py` from build and uninstall scripts; protected user credentials (`~/.claude/`) during host tool management.
+- **Accurate Isolation Terminology:** Renamed Standard profile to "Private Application Environment", clearly distinguishing user directory and configuration separation from strict kernel sandbox boundaries.
+
+### Bug Fixes & Functional Correctness
+- **Universal Tarball sys.path Fix:** Updated `install.sh` to install to Python's standard user `site-packages` (`site.getusersitepackages()`), resolving `ModuleNotFoundError` on standalone tarball installations.
+- **Self-Contained Container Install Helper:** Eliminated external module dependency in `encloser-install`, inlining safe path resolution and executable validation.
+- **Truthful APT Reporting:** Replaced simulated success output with honest status reporting in rootless APT shims and CLI proxy, faithfully propagating subprocess exit codes.
+- **Accurate Diagnostic Exit Code 126 Mapping:** Corrected diagnostic error categorization to identify Bubblewrap initialization and user namespace failures rather than misdiagnosing as file permissions.
+- **Standard-Compliant JSON-RPC MCP Server:** Implemented JSON-RPC 2.0 error specifications (`-32700` parse error, `-32601` method not found) and returned full execution logs for container commands.
+- **AppStream Metainfo & Debian Package Polish:** Added AppStream metainfo specification (`app.encloser.metainfo.xml`), standard pixmaps, and updated package control metadata for Ubuntu App Center compatibility.
+
+---
+
 ## [1.0.2] - 2026-11-09
 
 ### Security & Hardening

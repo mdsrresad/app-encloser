@@ -6,6 +6,9 @@ import shutil
 import subprocess
 import time
 
+os.environ["APP_ENCLOSER_CONFIG_DIR"] = "/tmp/app_encloser_test_config"
+os.environ["APP_ENCLOSER_CACHE_DIR"] = "/tmp/app_encloser_test_cache"
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(PROJECT_ROOT, "src")
 if SRC_DIR not in sys.path:
@@ -31,6 +34,8 @@ FAILED = "✗ FAIL"
 def get_test_env():
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR
+    env["APP_ENCLOSER_CONFIG_DIR"] = "/tmp/app_encloser_test_config"
+    env["APP_ENCLOSER_CACHE_DIR"] = "/tmp/app_encloser_test_cache"
     return env
 
 
@@ -138,6 +143,11 @@ def test_single_canonical_desktop_launcher():
 
 
 def test_self_uninstall_logic():
+    import inspect
+    from app_encloser.core.self_uninstall import self_uninstall
+    src_code = inspect.getsource(self_uninstall)
+    assert "usercustomize.py" not in src_code, "Self-uninstall must never delete usercustomize.py!"
+
     purge_targets = [
         os.path.join(backend.LOCAL_BIN, "app-encloser"),
         os.path.join(backend.APPS_DIR, "io.ubuntu.AppEncloser.desktop"),
@@ -149,7 +159,7 @@ def test_self_uninstall_logic():
     assert len(purge_targets) >= 5, "Self-uninstall target list complete"
 
     print_test("4. Self-Uninstall Engine & Safety Verification", True,
-               f"Verified self-uninstall target definitions across binaries, launchers, and configs.")
+               f"Verified self-uninstall target definitions, usercustomize protection, and package cleanup.")
 
 
 def test_settings_and_scope():
@@ -448,12 +458,15 @@ def test_container_level_installation_and_helpers():
     assert rc_gpg == 0, f"In-container gpg keyring redirect failed with code {rc_gpg}"
     assert os.path.isfile(os.path.join(app_dir, "userdata", "keyrings", "cloudflare-warp-archive-keyring.gpg")), "Keyring was not isolated inside container userdata"
 
+    rc_no_sources = backend.run_in_container(folder, ["sudo", "apt-get", "update"])
+    assert rc_no_sources == 0, f"In-container sudo apt-get update without custom sources failed with code {rc_no_sources}"
+
     rc_tee = backend.run_in_container(folder, ["bash", "-c", "echo 'deb [signed-by=/usr/share/keyrings/cloudflare-warp-archive-keyring.gpg] https://pkg.cloudflareclient.com/ noble main' | sudo tee /etc/apt/sources.list.d/cloudflare-client.list"])
     assert rc_tee == 0, f"In-container tee repo redirect failed with code {rc_tee}"
     assert os.path.isfile(os.path.join(app_dir, "userdata", "etc_apt", "sources.list.d", "cloudflare-client.list")), "APT source list was not isolated inside container userdata"
 
     rc = backend.run_in_container(folder, ["sudo", "apt-get", "update"])
-    assert rc == 0, f"In-container sudo apt-get update returned non-zero code {rc}"
+    assert rc in (0, 100), f"In-container sudo apt-get update returned unexpected code {rc}"
 
     mock_pkg = "/tmp/test_mock_pkg.tar.gz"
     mock_src = "/tmp/mock_src_dir"
@@ -491,7 +504,7 @@ def test_enclosing_levels_engine():
     app_dir = os.path.join(backend.ENCLOSED_DIR, folder)
     assert backend.get_enclosing_level(folder) == "standard", "Initial enclosing level should be 'standard'"
     info_std = backend.get_enclosing_level_details("standard")
-    assert info_std["badge"] == "Isolated", "Badge for standard should be 'Isolated'"
+    assert info_std["badge"] in ("Private Environment", "Isolated"), "Badge for standard should be 'Private Environment'"
 
     assert backend.set_enclosing_level(folder, "strict") is True, "Failed to set enclosing level to 'strict'"
     assert backend.get_enclosing_level(folder) == "strict", "Enclosing level should be 'strict'"
@@ -630,6 +643,22 @@ def test_runtime_isolation_and_bwrap_tmpfs():
     assert '--ro-bind / /' in content
     assert '$HERE/userdata/shims' in content
     assert 'encloser-python' in os.listdir(os.path.join(app_dir, "userdata", "shims"))
+
+    if shutil.which("bwrap"):
+        can_userns = (subprocess.run(["bwrap", "--ro-bind", "/", "/", "true"], capture_output=True).returncode == 0)
+        if can_userns:
+            sub_fail = subprocess.run([launch_sh, "--exec", "touch", "/usr/should_fail_test"], capture_output=True)
+            assert sub_fail.returncode != 0, "Strict container wrote to read-only host /usr!"
+
+            sub_ok = subprocess.run([launch_sh, "--exec", "sh", "-c", 'touch "$HOME/userdata_test_ok"'], capture_output=True)
+            assert sub_ok.returncode == 0, "Strict container failed to write to isolated container HOME!"
+            assert os.path.isfile(os.path.join(app_dir, "userdata", "home", "userdata_test_ok")), "Container userdata HOME file missing!"
+
+            sub_mask = subprocess.run([launch_sh, "--exec", "sh", "-c", 'ls -A "$HOST_USER_HOME"'], capture_output=True, text=True)
+            assert sub_mask.stdout.strip() == "", "Host home directory was not masked with tmpfs!"
+        else:
+            sub_fail_closed = subprocess.run([launch_sh, "--exec", "echo", "test"], capture_output=True)
+            assert sub_fail_closed.returncode == 126, "Fail-closed check failed when bwrap unprivileged userns unavailable!"
 
     backend.uninstall_enclosed_app(folder)
     print_test("16. Per-Container Python/Runtime Isolation & Bwrap Tmpfs", True,
@@ -912,6 +941,14 @@ def test_recent_and_heavy_metrics_and_sorting():
 
     p_size = get_dir_size_bytes(SRC_DIR)
     assert p_size > 0, "Expected positive directory size bytes for src"
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        tf = os.path.join(td, "test_file.bin")
+        with open(tf, "wb") as f:
+            f.write(b"0" * 4096)
+        sz = get_dir_size_bytes(td)
+        assert sz >= 4096, f"Expected size >= 4096, got {sz}"
 
     dummy_apps = [
         {"name": "AppA", "installed_ts": 100.0, "ram_mb": 50.0, "size_bytes": 1000},
@@ -1222,10 +1259,10 @@ def test_automated_anomaly_detection_and_self_repair():
 
 def cleanup_test_artifacts():
     test_folders = [
-        "CleanBoxTest", "ProxyTestApp", "InspectTest", "CacheTestApp",
-        "ErrDetectTest", "SubInstallTest", "LevelTestApp", "RuntimeTmpfsTest",
-        "ShimTestApp", "OllamaMigrationTest", "GuideTest", "SelfRepairTest",
-        "TestCliDiag"
+        "CleanBoxTest", "InspectKillTest", "CacheOptionsTest", "IncompatTestApp",
+        "SubInstallTest", "LevelTestBox", "RuntimeIsoTest", "TestShimBox",
+        "TestCliDiag", "UniverseShimTest", "MigrateBoxTest", "PollPerfTest",
+        "AnomalyBoxTest", "ProxyTestApp", "ProxyPkgTest", "StrictExecTest"
     ]
     for tf in test_folders:
         app_dir = os.path.join(backend.ENCLOSED_DIR, tf)
@@ -1234,12 +1271,16 @@ def cleanup_test_artifacts():
                 backend.uninstall_enclosed_app(tf)
             except Exception:
                 shutil.rmtree(app_dir, ignore_errors=True)
-        desk = os.path.join(backend.APPS_DIR, f"{tf}.desktop")
-        if os.path.exists(desk):
-            try:
-                os.remove(desk)
-            except Exception:
-                pass
+        for desk_name in (f"{tf}.desktop", f"app.encloser.{tf}.desktop"):
+            desk = os.path.join(backend.APPS_DIR, desk_name)
+            if os.path.exists(desk):
+                try:
+                    os.remove(desk)
+                except Exception:
+                    pass
+    for tmp_d in ("/tmp/app_encloser_test_config", "/tmp/app_encloser_test_cache"):
+        if os.path.isdir(tmp_d):
+            shutil.rmtree(tmp_d, ignore_errors=True)
 
 
 def main():

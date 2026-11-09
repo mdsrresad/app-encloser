@@ -2,12 +2,15 @@
 set -e
 PREFIX="${HOME}/.local"
 BIN_DIR="${PREFIX}/bin"
-LIB_DIR="${PREFIX}/lib/python3/dist-packages/app_encloser"
+USER_SITE="$(python3 -m site --user-site 2>/dev/null || echo "${PREFIX}/lib/python3/site-packages")"
+LIB_DIR="${USER_SITE}/app_encloser"
 APP_DIR="${PREFIX}/share/applications"
 ICON_DIR="${PREFIX}/share/icons/hicolor"
 
 mkdir -p "${BIN_DIR}" "${LIB_DIR}" "${APP_DIR}"
 
+rm -rf "${LIB_DIR}"
+mkdir -p "${LIB_DIR}"
 cp -r src/app_encloser/* "${LIB_DIR}/"
 cp debian/usr/bin/app-encloser "${BIN_DIR}/app-encloser"
 chmod +x "${BIN_DIR}/app-encloser"

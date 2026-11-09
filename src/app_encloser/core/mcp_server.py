@@ -196,6 +196,13 @@ def run_mcp_server():
         try:
             req = json.loads(line)
         except Exception:
+            err_res = {
+                "jsonrpc": "2.0",
+                "id": None,
+                "error": {"code": -32700, "message": "Parse error"}
+            }
+            sys.stdout.write(json.dumps(err_res) + "\n")
+            sys.stdout.flush()
             continue
 
         req_id = req.get("id")
@@ -249,8 +256,17 @@ def run_mcp_server():
                     ok = set_strict_sandbox(args["folder_name"], args["enable"])
                     content = f"Strict sandbox: {ok}"
                 elif name == "run_container_cmd":
+                    from app_encloser.core.config import ENCLOSED_DIR
                     rc = run_in_container(args["folder_name"], args["command"])
-                    content = f"Process exited with code {rc}"
+                    log_file = os.path.join(ENCLOSED_DIR, args["folder_name"], "userdata", "last_run.log")
+                    out = ""
+                    if os.path.isfile(log_file):
+                        try:
+                            with open(log_file, "r", errors="ignore") as lf:
+                                out = lf.read().strip()
+                        except Exception:
+                            pass
+                    content = json.dumps({"exit_code": rc, "output": out}, indent=2)
                     is_err = (rc != 0)
                 elif name == "create_container":
                     ok, msg = create_empty_container(args["folder_name"], args.get("strict", True))
@@ -315,6 +331,15 @@ def run_mcp_server():
                     "content": [{"type": "text", "text": content}],
                     "isError": is_err
                 }
+            }
+            sys.stdout.write(json.dumps(res) + "\n")
+            sys.stdout.flush()
+
+        else:
+            res = {
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32601, "message": f"Method not found: {method}"}
             }
             sys.stdout.write(json.dumps(res) + "\n")
             sys.stdout.flush()
