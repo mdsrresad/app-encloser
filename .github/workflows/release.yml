@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc desktop-file-utils
+
+      - name: Build package and universal archive
+        run: |
+          ./build.sh
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            TAG="v1.0.1"
+          fi
+          sed -n '/## \[1.0.1\]/,/## \[1.0.0\]/p' CHANGELOG.md | sed '$d' > release_body.md
+          if [ ! -s release_body.md ]; then
+            cat CHANGELOG.md > release_body.md
+          fi
+          gh release create "$TAG" \
+            --title "App Encloser $TAG — Hardened Application Sandbox for Linux" \
+            --notes-file release_body.md \
+            --latest \
+            app-encloser_*_all.deb \
+            app-encloser-*-linux-universal.tar.gz \
+            SHA256SUMS.txt || gh release upload "$TAG" app-encloser_*_all.deb app-encloser-*-linux-universal.tar.gz SHA256SUMS.txt --clobber
