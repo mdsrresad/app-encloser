@@ -4,7 +4,7 @@ import shlex
 import stat
 from typing import Dict, Any, List
 
-from app_encloser.core.config import ENCLOSED_DIR, clean_folder_name
+from app_encloser.core.config import ENCLOSED_DIR, clean_folder_name, validate_container_name
 from app_encloser.core.container import is_strict_sandbox
 
 KNOWN_TRACKER_DOMAINS = [
@@ -29,7 +29,20 @@ SUSPICIOUS_PATTERNS = [
 
 
 def scan_app_security(folder_name: str) -> Dict[str, Any]:
-    folder_clean = clean_folder_name(folder_name)
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return {
+            "folder": folder_name,
+            "status": "INVALID_NAME",
+            "score": 0,
+            "grade": "F",
+            "findings": ["Invalid container name"],
+            "trackers": [],
+            "suid_binaries": [],
+            "world_writable": [],
+            "recommendations": []
+        }
+    folder_clean = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_clean)
     if not os.path.isdir(app_dir):
         return {

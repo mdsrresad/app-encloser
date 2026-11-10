@@ -185,7 +185,6 @@ class InstallIntoContainerDialog(Gtk.Window):
         filter_all.add_pattern("*.tar")
         filter_all.add_pattern("*.zip")
         filter_all.add_pattern("*.rpm")
-        filters = Gtk.FilterListModel()
         dialog.set_default_filter(filter_all)
 
         def on_open_finish(source, result):

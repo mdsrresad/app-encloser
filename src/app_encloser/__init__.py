@@ -1,3 +1,3 @@
-"""App Encloser - Isolated Portable Application & Package Manager for Linux (Ubuntu 22.04 / 24.04 / 26.04+ & Debian)"""
+"""App Encloser - Isolated Portable Application & Package Manager for Linux (Ubuntu 24.04 LTS / Debian 12+)"""
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"

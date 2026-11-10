@@ -114,6 +114,12 @@ def main():
     folder_name = os.path.basename(app_dir)
     dl_dir = os.path.join(app_dir, "userdata", "cache")
     os.makedirs(dl_dir, exist_ok=True)
+    for old_deb in os.listdir(dl_dir):
+        if old_deb.endswith(".deb"):
+            try:
+                os.remove(os.path.join(dl_dir, old_deb))
+            except Exception:
+                pass
     manifest_file = os.path.join(app_dir, "userdata", "installed_pkgs.json")
     keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
     os.makedirs(keyrings_dir, exist_ok=True)
@@ -240,7 +246,7 @@ def main():
             cnt = subprocess.run(["dpkg-deb", "--contents", dep_deb], capture_output=True, text=True)
             if cnt.returncode == 0:
                 for line in cnt.stdout.splitlines():
-                    parts = line.split()
+                    parts = line.split(None, 5)
                     if len(parts) >= 6:
                         rel_p = parts[5].lstrip("./")
                         if rel_p and not rel_p.endswith("/"):
@@ -255,7 +261,7 @@ def main():
         cnt = subprocess.run(["dpkg-deb", "--contents", target_deb], capture_output=True, text=True)
         if cnt.returncode == 0:
             for line in cnt.stdout.splitlines():
-                parts = line.split()
+                parts = line.split(None, 5)
                 if len(parts) >= 6:
                     rel_p = parts[5].lstrip("./")
                     if rel_p and not rel_p.endswith("/"):

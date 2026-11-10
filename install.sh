@@ -15,7 +15,7 @@ cp -r src/app_encloser/* "${LIB_DIR}/"
 cp debian/usr/bin/app-encloser "${BIN_DIR}/app-encloser"
 chmod +x "${BIN_DIR}/app-encloser"
 
-cp debian/usr/share/applications/app.encloser.desktop "${APP_DIR}/"
+sed "s|Exec=/usr/bin/app-encloser|Exec=${BIN_DIR}/app-encloser|" debian/usr/share/applications/app.encloser.desktop > "${APP_DIR}/app.encloser.desktop"
 
 for size in 16x16 24x24 32x32 48x48 64x64 128x128 256x256 512x512 scalable; do
     mkdir -p "${ICON_DIR}/${size}/apps"

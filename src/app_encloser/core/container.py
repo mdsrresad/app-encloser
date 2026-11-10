@@ -5,7 +5,7 @@ import shutil
 import subprocess
 from typing import List, Optional, Tuple, Dict, Any
 
-from app_encloser.core.config import ENCLOSED_DIR, clean_folder_name
+from app_encloser.core.config import ENCLOSED_DIR, clean_folder_name, validate_container_name
 
 
 def find_lib_dirs(app_files: str, prefix: str = "$HERE/app_files") -> List[str]:
@@ -223,7 +223,10 @@ def is_strict_sandbox(app_dir: str) -> bool:
 
 
 def set_strict_sandbox(folder_name: str, enable: bool = True) -> bool:
-    app_dir = os.path.join(ENCLOSED_DIR, folder_name)
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return False
+    app_dir = os.path.join(ENCLOSED_DIR, valid)
     if not os.path.isdir(app_dir):
         return False
     flag = os.path.join(app_dir, ".strict_sandbox")
@@ -237,19 +240,20 @@ def set_strict_sandbox(folder_name: str, enable: bool = True) -> bool:
 
 
 def find_container_folder(name: str, exact_only: bool = True) -> Optional[str]:
-    if not name or not os.path.isdir(ENCLOSED_DIR):
+    valid = validate_container_name(name)
+    if not valid or not os.path.isdir(ENCLOSED_DIR):
         return None
-    raw = name.strip()
+    raw = valid
     direct = os.path.join(ENCLOSED_DIR, raw)
     if os.path.isdir(direct):
         return raw
     low = raw.lower()
     entries = sorted(os.listdir(ENCLOSED_DIR))
     for entry in entries:
-        if entry.lower() == low:
+        if entry.lower() == low and os.path.isdir(os.path.join(ENCLOSED_DIR, entry)):
             return entry
     if not exact_only:
-        matches = [entry for entry in entries if entry.lower().startswith(low)]
+        matches = [entry for entry in entries if entry.lower().startswith(low) and os.path.isdir(os.path.join(ENCLOSED_DIR, entry))]
         if len(matches) == 1:
             return matches[0]
     return None
@@ -301,7 +305,12 @@ def get_enclosing_level_details(level: str) -> Dict[str, str]:
 
 
 def set_enclosing_level(folder_name: str, level: str) -> bool:
-    resolved = find_container_folder(folder_name) or folder_name
+    resolved = find_container_folder(folder_name)
+    if not resolved:
+        valid = validate_container_name(folder_name)
+        if not valid:
+            return False
+        resolved = valid
     app_dir = os.path.join(ENCLOSED_DIR, resolved)
     if not os.path.isdir(app_dir):
         return False
@@ -329,7 +338,12 @@ def set_enclosing_level(folder_name: str, level: str) -> bool:
 
 
 def set_container_option(folder_name: str, option: str, enabled: bool) -> bool:
-    resolved = find_container_folder(folder_name) or folder_name
+    resolved = find_container_folder(folder_name)
+    if not resolved:
+        valid = validate_container_name(folder_name)
+        if not valid:
+            return False
+        resolved = valid
     app_dir = os.path.join(ENCLOSED_DIR, resolved)
     if not os.path.isdir(app_dir):
         return False
@@ -350,7 +364,12 @@ def set_container_option(folder_name: str, option: str, enabled: bool) -> bool:
 
 
 def get_container_options(folder_name: str) -> Dict[str, bool]:
-    resolved = find_container_folder(folder_name) or folder_name
+    resolved = find_container_folder(folder_name)
+    if not resolved:
+        valid = validate_container_name(folder_name)
+        if not valid:
+            return {}
+        resolved = valid
     app_dir = os.path.join(ENCLOSED_DIR, resolved)
     if not os.path.isdir(app_dir):
         return {}
@@ -413,7 +432,13 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'export HOMEBREW_CACHE="$HERE/userdata/cache/homebrew"',
         'export HOMEBREW_LOGS="$HERE/userdata/logs/homebrew"',
         'export HOMEBREW_TEMP="$HERE/userdata/tmp"',
-        'if [[ -f "$HERE/app_files/lib/libencloser_shim.so" ]]; then',
+        'ENCLOSING_LEVEL="standard"',
+        'if [[ -f "$HERE/.enclosing_level" ]]; then',
+        '    ENCLOSING_LEVEL="$(cat "$HERE/.enclosing_level" 2>/dev/null | tr -d "[:space:]" | tr "[:upper:]" "[:lower:]")"',
+        'elif [[ -f "$HERE/.strict_sandbox" ]]; then',
+        '    ENCLOSING_LEVEL="strict"',
+        'fi',
+        'if [[ "$ENCLOSING_LEVEL" != "strict" && -f "$HERE/app_files/lib/libencloser_shim.so" ]]; then',
         '    export ENCLOSER_NFT_SHIM="$HERE/userdata/shims/nft"',
         '    export LD_PRELOAD="$HERE/app_files/lib/libencloser_shim.so${LD_PRELOAD:+:$LD_PRELOAD}"',
         'fi',
@@ -464,12 +489,6 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'if [[ -n "$SBOX_FLAG" || -f "$(dirname "$TARGET_BIN")/resources/app.asar" || -f "$(dirname "$TARGET_BIN")/chrome-sandbox" ]]; then',
         '    export ELECTRON_DISABLE_SANDBOX="1"',
         'fi',
-        'ENCLOSING_LEVEL="standard"',
-        'if [[ -f "$HERE/.enclosing_level" ]]; then',
-        '    ENCLOSING_LEVEL="$(cat "$HERE/.enclosing_level" 2>/dev/null | tr -d "[:space:]" | tr "[:upper:]" "[:lower:]")"',
-        'elif [[ -f "$HERE/.strict_sandbox" ]]; then',
-        '    ENCLOSING_LEVEL="strict"',
-        'fi',
         'if [[ "$ENCLOSING_LEVEL" == "strict" ]]; then',
         '    if ! command -v bwrap >/dev/null 2>&1; then',
         '        echo "[App Encloser ERROR] Bubblewrap (bwrap) is not installed on the system. Strict sandbox cannot be enforced. Launch aborted." >&2',
@@ -483,7 +502,14 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        cleanup_pid',
         '        exit 126',
         '    fi',
-        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /home --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /home --tmpfs "$HOST_USER_HOME" --ro-bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    for rw_sub in home config cache local_share state run logs tmp keyrings etc_apt var_lib_apt_lists venv bin; do',
+        '        mkdir -p "$HERE/userdata/$rw_sub"',
+        '        BWRAP_CMD+=(--bind "$HERE/userdata/$rw_sub" "$HERE/userdata/$rw_sub")',
+        '    done',
+        '    if [[ -f "$HERE/app_files/lib/libencloser_shim.so" ]]; then',
+        '        BWRAP_CMD+=(--setenv ENCLOSER_NFT_SHIM "$HERE/userdata/shims/nft" --setenv LD_PRELOAD "$HERE/app_files/lib/libencloser_shim.so")',
+        '    fi',
         '    if [[ -f "$HERE/.no_net" || "$ENCLOSER_NO_NET" == "1" ]]; then',
         '        BWRAP_CMD+=(--unshare-net)',
         '    fi',
@@ -511,14 +537,14 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '            BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/pulse" "$XDG_RUNTIME_DIR/pulse")',
         '        fi',
         '    fi',
-        '    if [[ ! -f "$HERE/.no_dbus" && "$ENCLOSER_NO_DBUS" != "1" ]]; then',
+        '    if [[ -f "$HERE/.allow_dbus" || "$ENCLOSER_ALLOW_DBUS" == "1" ]]; then',
         '        if [[ -n "$XDG_RUNTIME_DIR" && -e "$XDG_RUNTIME_DIR/bus" ]]; then',
         '            BWRAP_CMD+=(--bind "$XDG_RUNTIME_DIR/bus" "$XDG_RUNTIME_DIR/bus")',
         '        fi',
+        '    else',
+        '        BWRAP_CMD+=(--unsetenv DBUS_SESSION_BUS_ADDRESS)',
         '    fi',
-        '    if [[ -d "/dev/shm" ]]; then',
-        '        BWRAP_CMD+=(--bind /dev/shm /dev/shm)',
-        '    fi',
+        '    BWRAP_CMD+=(--tmpfs /dev/shm)',
         '    if [[ -d "$HERE/userdata/linuxbrew" ]]; then',
         '        BWRAP_CMD+=(--bind "$HERE/userdata/linuxbrew" /home/linuxbrew/.linuxbrew)',
         '    fi',
@@ -592,6 +618,10 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
 
 
 def run_in_container(folder_name: str, cmd_args: List[str], env_vars: Optional[Dict[str, str]] = None) -> int:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return 1
+    folder_name = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     if not os.path.isdir(app_dir):
         return 1
@@ -621,6 +651,10 @@ def run_in_container(folder_name: str, cmd_args: List[str], env_vars: Optional[D
 
 
 def open_container_shell(folder_name: str) -> int:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return 1
+    folder_name = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     bashrc_path = os.path.join(app_dir, "userdata", ".container_bashrc")
     os.makedirs(os.path.join(app_dir, "userdata"), exist_ok=True)
@@ -643,6 +677,10 @@ def open_container_shell(folder_name: str) -> int:
 
 
 def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return []
+    folder_name = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     pids = set()
     my_pid = os.getpid()
@@ -667,28 +705,8 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
                                     p_exe = os.path.realpath(f"/proc/{p}/exe")
                                 except Exception:
                                     pass
-                                if p_exe and (p_exe == app_real or p_exe.startswith(app_real + os.sep)):
+                                if p_exe:
                                     pids.add(p)
-                                else:
-                                    matched = False
-                                    try:
-                                        with open(f"/proc/{p}/cmdline", "rb") as cf:
-                                            raw_args = cf.read().split(b"\0")
-                                        for arg_b in raw_args:
-                                            arg_str = arg_b.decode("utf-8", errors="ignore").strip()
-                                            if arg_str and (arg_str == app_real or os.path.realpath(arg_str).startswith(app_real + os.sep)):
-                                                pids.add(p)
-                                                matched = True
-                                                break
-                                    except Exception:
-                                        pass
-                                    if not matched:
-                                        try:
-                                            p_cwd = os.path.realpath(f"/proc/{p}/cwd")
-                                            if p_cwd and (p_cwd == app_real or p_cwd.startswith(app_real + os.sep)):
-                                                pids.add(p)
-                                        except Exception:
-                                            pass
                             except OSError:
                                 pass
         except Exception:
@@ -770,6 +788,10 @@ def is_app_running(folder_name: str) -> bool:
 def kill_app_processes(folder_name: str) -> Tuple[bool, str, int]:
     import signal
     import time
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return False, f"Invalid container name: '{folder_name}'.", 0
+    folder_name = valid
     pids = get_running_app_pids(folder_name, fast_check=False)
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     pid_file = os.path.join(app_dir, "userdata", "running.pid")
@@ -803,6 +825,10 @@ def kill_app_processes(folder_name: str) -> Tuple[bool, str, int]:
 
 
 def inspect_container_contents(folder_name: str) -> Dict[str, Any]:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return {}
+    folder_name = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     app_files = os.path.join(app_dir, "app_files")
     binaries = []

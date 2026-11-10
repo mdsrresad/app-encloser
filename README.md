@@ -4,7 +4,7 @@
 
 ### Native Linux Application Sandbox, Package Encloser & Runtime Universe
 
-[![Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu%2022.04%20%7C%2024.04%20%7C%2026.04%2B%20%7C%20Debian-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](https://ubuntu.com)
+[![Linux](https://img.shields.io/badge/Platform-Linux%20%7C%20Ubuntu%2024.04%20LTS%20%7C%20Debian%2012%2B-E95420?style=for-the-badge&logo=ubuntu&logoColor=white)](https://ubuntu.com)
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![GTK4](https://img.shields.io/badge/GUI-GTK4%20%2F%20Libadwaita-4A90E2?style=for-the-badge&logo=gnome&logoColor=white)](https://gnome.org)
 [![Bubblewrap](https://img.shields.io/badge/Sandbox-Bubblewrap%20(bwrap)-FF6F00?style=for-the-badge&logo=linuxcontainers&logoColor=white)](https://github.com/containers/bubblewrap)
@@ -128,7 +128,7 @@ app-encloser level MyUntrustedApp strict --no-net --no-dbus
 Every enclosed container acts as its own self-contained environment:
 
 - **Interactive Shell:** Launching `app-encloser shell <app>` opens a dedicated container terminal with a custom colored prompt: `[Universe: <app>] ~$`.
-- **Rootless APT & Package Swapping:** Run `sudo apt install <pkg>` or `sudo apt install <pkg>=<version>` inside the container. Package archives are downloaded and extracted into `app_files/` without touching the host system.
+- **Rootless APT & Package Extraction:** Run `sudo apt install <pkg>` or `sudo apt install <pkg>=<version>` inside the container. Package archives are downloaded and extracted into `app_files/` via `encloser-install` (using `dpkg-deb -x` rootless extraction without executing root maintainer scripts like `postinst`).
 - **Rootless Keyring Redirection:** Transparently intercepts `/etc/apt/keyrings` and `/usr/share/keyrings` and routes them to `userdata/keyrings/`.
 - **`encloser-python <version>`:** Download and use isolated Python versions (e.g. Python 3.10, 3.11, 3.12) inside that specific container without interfering with host Python.
 - **`encloser-brew install <pkg>`:** Containerized Homebrew installation isolated in `userdata/linuxbrew/`.
@@ -201,12 +201,12 @@ Enclosed applications are structured as follows:
 
 ## Installation & Setup
 
-### Prerequisites (Ubuntu 22.04 / 24.04 / 26.04+ / Debian 12+)
+### Prerequisites (Ubuntu 24.04 LTS / Debian 12+)
 
-App Encloser is designed for broad modern Linux compatibility:
-- **Ubuntu:** 22.04 LTS (Jammy), 24.04 LTS (Noble), 26.04+ (Resolute)
-- **Debian:** 12 (Bookworm), 13 (Trixie)
-- **Derivatives:** Linux Mint 21/22, Pop!_OS, Zorin OS
+App Encloser is designed and tested on:
+- **Ubuntu:** 24.04 LTS (Wayland / X11)
+- **Debian:** 12 (Bookworm)+
+- **Derivatives:** Linux Mint, Pop!_OS, Zorin OS based on Ubuntu 24.04 / Debian 12+
 - **Universal Linux:** Any distribution with Python 3.10+, GTK4/Libadwaita, and Bubblewrap
 
 Install system dependencies:
@@ -304,7 +304,7 @@ App Encloser is an independent personal open-source project authored and maintai
 
 ### A Note on Human Fallibility:
 > **"Never blindly believe anything."**
-> I am human, and humans can make mistakes. While App Encloser is engineered to high standards with strict verification, zero speculation, and 31 automated test suites, software interacts with complex operating system layers, diverse packaging formats, and evolving desktop environments.
+> I am human, and humans can make mistakes. While App Encloser is engineered to high standards with strict verification, zero speculation, and 36 automated verification checks, software interacts with complex operating system layers, diverse packaging formats, and evolving desktop environments.
 
 - **Inspect and Verify:** Always inspect commands, verify scripts, and test in your own environment. Never execute arbitrary scripts from untrusted sources.
 - **Feedback & Community:** If you discover a bug, an edge case, or an opportunity for improvement, issues and pull requests are welcomed. Every contribution helps make application isolation safer and more dependable.
@@ -313,7 +313,7 @@ App Encloser is an independent personal open-source project authored and maintai
 
 ## Verification & Automated Tests
 
-App Encloser includes a comprehensive test suite of 31 automated test modules covering container lifecycle, user namespace confinement, path traversal defenses (Tar symlink traversal and Zip Slip), cryptographic updater verification, and CLI/MCP interfaces:
+App Encloser includes a comprehensive test suite of 36 automated verification checks (285+ assertions) covering container lifecycle, user namespace confinement, path traversal defenses (Tar symlink traversal and Zip Slip), cryptographic updater verification, and CLI/MCP interfaces:
 
 ```bash
 python3 tests/verify_all.py

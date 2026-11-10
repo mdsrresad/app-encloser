@@ -103,7 +103,7 @@ class EnclosingLevelDialog(Adw.Window):
 
         row_strict = Adw.ActionRow(
             title="Strict Sandbox (Bubblewrap)",
-            subtitle="Kernel namespace virtualization via bwrap. Complete host filesystem and home directory tmpfs masking. Zero leak guarantee into or out of container."
+            subtitle="Kernel namespace virtualization via bwrap. Complete host filesystem read-only mount and home directory tmpfs masking."
         )
         row_strict.set_icon_name("security-high-symbolic")
         row_strict.add_suffix(self.rb_strict)

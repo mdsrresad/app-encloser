@@ -126,6 +126,10 @@ def set_terminal_guard_active(active: bool) -> bool:
         return False
 
 
+def disable_terminal_guard() -> bool:
+    return set_terminal_guard_active(False)
+
+
 def sync_terminal_guard() -> None:
     enabled = get_setting("terminal_guard_enabled", False)
     set_terminal_guard_active(enabled)

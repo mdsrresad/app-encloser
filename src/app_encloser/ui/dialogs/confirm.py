@@ -22,7 +22,7 @@ class ConfirmUninstallDialog(Gtk.Window):
         lbl = Gtk.Label(
             label=f"Completely remove <b>{len(folders)}</b> application{'s' if len(folders) > 1 else ''}?\n\n"
                   f"<small>Apps: {GLib.markup_escape_text(', '.join(folders))}</small>\n\n"
-                  "This permanently wipes all binaries, data, and desktop shortcuts with zero leftovers.",
+                  "This permanently removes all binaries, data, and desktop shortcuts cleanly.",
             use_markup=True,
             wrap=True,
             xalign=0

@@ -1,7 +1,7 @@
 from app_encloser.core.config import (
     REAL_HOME, ENCLOSED_DIR, APPS_DIR, ICONS_DIR, LOCAL_BIN, CONFIG_DIR, CACHE_DIR,
     SETTINGS_FILE, DEFAULT_SETTINGS, load_settings, save_settings, get_setting,
-    update_setting, clean_folder_name, is_supported_file, get_dir_size,
+    update_setting, clean_folder_name, validate_container_name, is_supported_file, get_dir_size,
     get_dir_size_bytes, invalidate_dir_size_cache, ensure_base_dirs
 )
 from app_encloser.core.container import (
@@ -54,7 +54,7 @@ from app_encloser.core.history import (
 )
 from app_encloser.core.terminal_guard import (
     generate_shell_guard_script, is_terminal_guard_active,
-    set_terminal_guard_active, sync_terminal_guard, handle_intercept_cmd
+    set_terminal_guard_active, disable_terminal_guard, sync_terminal_guard, handle_intercept_cmd
 )
 from app_encloser.core.updater import check_for_updates, perform_cli_update
 from app_encloser.core.mcp_server import run_mcp_server

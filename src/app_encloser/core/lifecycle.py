@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Tuple, Optional
 
 from app_encloser.core.config import (
     REAL_HOME, LOCAL_BIN, ENCLOSED_DIR, APPS_DIR, ICONS_DIR, CACHE_DIR,
-    clean_folder_name, get_dir_size, get_dir_size_bytes, invalidate_dir_size_cache,
+    clean_folder_name, validate_container_name, get_dir_size, get_dir_size_bytes, invalidate_dir_size_cache,
     is_supported_file, get_setting
 )
 from app_encloser.core.desktop import (
@@ -242,6 +242,10 @@ def list_enclosed_apps() -> List[Dict[str, Any]]:
 
 
 def repair_app(folder_name: str) -> Tuple[bool, str]:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return False, f"Invalid container name: {folder_name}"
+    folder_name = valid
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     if not os.path.isdir(app_dir):
         return False, f"Folder {folder_name} does not exist"
@@ -361,6 +365,10 @@ def repair_all_apps() -> List[Dict[str, Any]]:
 
 
 def uninstall_enclosed_app(folder_name: str):
+    valid = validate_container_name(folder_name)
+    if not valid:
+        raise ValueError(f"Invalid container name: {folder_name}")
+    folder_name = valid
     import time
     kill_app_processes(folder_name)
     for _ in range(5):
@@ -449,14 +457,22 @@ def uninstall_enclosed_app(folder_name: str):
 def batch_uninstall(folders: List[str]) -> List[Dict[str, Any]]:
     results = []
     for f in folders:
-        uninstall_enclosed_app(f)
-        results.append({"folder": f, "success": True})
+        try:
+            uninstall_enclosed_app(f)
+            results.append({"folder": f, "success": True})
+        except Exception as e:
+            results.append({"folder": f, "success": False, "error": str(e)})
     return results
 
 
 def batch_clear_cache(folders: List[str], clear_cache: bool = True, clear_logs: bool = True, clear_userdata: bool = False) -> List[Dict[str, Any]]:
     results = []
     for f in folders:
+        valid = validate_container_name(f)
+        if not valid:
+            results.append({"folder": f, "success": False, "error": "Invalid container name"})
+            continue
+        f = valid
         app_dir = os.path.join(ENCLOSED_DIR, f)
         ud = os.path.join(app_dir, "userdata")
         targets = [ud, app_dir]

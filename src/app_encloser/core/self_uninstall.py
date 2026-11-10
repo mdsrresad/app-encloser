@@ -11,6 +11,23 @@ from app_encloser.core.lifecycle import uninstall_enclosed_app
 
 
 def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
+    try:
+        from app_encloser.core.terminal_guard import disable_terminal_guard
+        disable_terminal_guard()
+    except Exception:
+        pass
+
+    for rc_name in (".bashrc", ".zshrc"):
+        rc_path = os.path.join(REAL_HOME, rc_name)
+        if os.path.isfile(rc_path):
+            try:
+                with open(rc_path, "r", encoding="utf-8", errors="ignore") as f:
+                    lines = [ln for ln in f if "shell_guard.sh" not in ln]
+                with open(rc_path, "w", encoding="utf-8") as f:
+                    f.writelines(lines)
+            except Exception:
+                pass
+
     if purge_apps and os.path.isdir(ENCLOSED_DIR):
         app_folders = [
             f for f in os.listdir(ENCLOSED_DIR)

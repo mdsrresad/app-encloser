@@ -5,7 +5,7 @@ import platform
 import subprocess
 from typing import Dict, Any, List, Tuple, Optional
 
-from app_encloser.core.config import ENCLOSED_DIR
+from app_encloser.core.config import ENCLOSED_DIR, validate_container_name
 from app_encloser.core.security import scan_app_security
 from app_encloser.core.container import find_lib_dirs
 
@@ -46,21 +46,93 @@ def check_elf_architecture(binary_path: str) -> Tuple[bool, str, str]:
 def check_missing_libraries(binary_path: str, extra_lib_dirs: Optional[List[str]] = None) -> List[str]:
     if not os.path.isfile(binary_path):
         return []
-    env = os.environ.copy()
-    if extra_lib_dirs:
-        env["LD_LIBRARY_PATH"] = ":".join(extra_lib_dirs) + ":" + env.get("LD_LIBRARY_PATH", "")
     try:
-        res = subprocess.run(["ldd", binary_path], env=env, capture_output=True, text=True, timeout=5)
-        missing = []
-        for line in res.stdout.splitlines():
-            if "=> not found" in line:
-                parts = line.strip().split("=>")
-                lib_name = parts[0].strip()
-                if lib_name and lib_name not in missing:
-                    missing.append(lib_name)
-        return missing
+        with open(binary_path, "rb") as f:
+            magic = f.read(4)
+            if magic != b"\x7fELF":
+                return []
     except Exception:
         return []
+
+    needed = []
+    try:
+        cmd = ["readelf", "-d", binary_path]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if res.returncode == 0:
+            for line in res.stdout.splitlines():
+                if "(NEEDED)" in line and "[" in line and "]" in line:
+                    lib = line.split("[")[1].split("]")[0].strip()
+                    if lib and lib not in needed:
+                        needed.append(lib)
+    except Exception:
+        pass
+
+    if not needed:
+        try:
+            cmd = ["objdump", "-p", binary_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    if "NEEDED" in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 2 and parts[0] == "NEEDED":
+                            lib = parts[1].strip()
+                            if lib and lib not in needed:
+                                needed.append(lib)
+        except Exception:
+            pass
+
+    if not needed:
+        return []
+
+    search_dirs = []
+    if extra_lib_dirs:
+        for ed in extra_lib_dirs:
+            if ed and os.path.isdir(ed) and ed not in search_dirs:
+                search_dirs.append(ed)
+
+    ld_env = os.environ.get("LD_LIBRARY_PATH", "")
+    if ld_env:
+        for p in ld_env.split(":"):
+            if p and os.path.isdir(p) and p not in search_dirs:
+                search_dirs.append(p)
+
+    std_dirs = [
+        "/lib", "/lib64", "/usr/lib", "/usr/lib64", "/usr/local/lib",
+        "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu",
+        "/usr/lib/arm-linux-gnueabihf", "/lib/x86_64-linux-gnu", "/lib/aarch64-linux-gnu"
+    ]
+    for sd in std_dirs:
+        if os.path.isdir(sd) and sd not in search_dirs:
+            search_dirs.append(sd)
+
+    try:
+        if os.path.isfile("/etc/ld.so.cache"):
+            res = subprocess.run(["ldconfig", "-p"], capture_output=True, text=True, timeout=5)
+            if res.returncode == 0:
+                cache_libs = set()
+                for line in res.stdout.splitlines():
+                    if "=>" in line:
+                        parts = line.split("=>")
+                        lib_part = parts[0].strip().split()[0]
+                        cache_libs.add(lib_part)
+                missing = []
+                for lib in needed:
+                    if lib in cache_libs:
+                        continue
+                    found = any(os.path.isfile(os.path.join(sd, lib)) for sd in search_dirs)
+                    if not found:
+                        missing.append(lib)
+                return missing
+    except Exception:
+        pass
+
+    missing = []
+    for lib in needed:
+        found = any(os.path.isfile(os.path.join(sd, lib)) for sd in search_dirs)
+        if not found:
+            missing.append(lib)
+    return missing
 
 
 def attach_isolation_diagnostics(res: Dict[str, Any], folder_name: str, full_log: str) -> Dict[str, Any]:
@@ -91,6 +163,23 @@ def attach_isolation_diagnostics(res: Dict[str, Any], folder_name: str, full_log
 
 
 def analyze_container_incompatibility(folder_name: str) -> Dict[str, Any]:
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return {
+            "has_error": True,
+            "status": "Invalid Container Name",
+            "category": "invalid_name",
+            "summary": f"Invalid container name: '{folder_name}'",
+            "details": [],
+            "missing_libraries": [],
+            "exit_code": None,
+            "recommendation": "Use a valid container name without directory traversal.",
+            "log_excerpt": "",
+            "full_log": "",
+            "binary_arch": "unknown",
+            "host_arch": platform.machine(),
+        }
+    folder_name = valid
     res = _analyze_container_incompatibility_inner(folder_name)
     return attach_isolation_diagnostics(res, folder_name, res.get("full_log", ""))
 

@@ -139,24 +139,46 @@ class SettingsWindow(Adw.PreferencesWindow):
         btn_lock.add_css_class("suggested-action")
         def do_lock(_btn):
             from app_encloser.core.history import lock_current_os_baseline
-            ok, msg = lock_current_os_baseline()
-            if hasattr(self.parent_win, "show_toast"):
-                self.parent_win.show_toast(msg)
-            if hasattr(self.parent_win, "load_apps"):
-                self.parent_win.load_apps(force_reload=True)
-                self.parent_win.refresh_list()
+            def run_action(cb):
+                ok, msg = lock_current_os_baseline()
+                GLib.idle_add(lambda: (
+                    hasattr(self.parent_win, "show_toast") and self.parent_win.show_toast(msg),
+                    hasattr(self.parent_win, "load_apps") and self.parent_win.load_apps(force_reload=True),
+                    hasattr(self.parent_win, "refresh_list") and self.parent_win.refresh_list()
+                ))
+                return ok, msg
+            if hasattr(self.parent_win, "run_task"):
+                self.parent_win.run_task("Locking OS Baseline...", run_action)
+            else:
+                ok, msg = lock_current_os_baseline()
+                if hasattr(self.parent_win, "show_toast"):
+                    self.parent_win.show_toast(msg)
+                if hasattr(self.parent_win, "load_apps"):
+                    self.parent_win.load_apps(force_reload=True)
+                    self.parent_win.refresh_list()
         btn_lock.connect("clicked", do_lock)
         box_baseline_btns.append(btn_lock)
 
         btn_reset = Gtk.Button(label="Reset")
         def do_reset(_btn):
             from app_encloser.core.history import reset_os_baseline
-            ok, msg = reset_os_baseline()
-            if hasattr(self.parent_win, "show_toast"):
-                self.parent_win.show_toast(msg)
-            if hasattr(self.parent_win, "load_apps"):
-                self.parent_win.load_apps(force_reload=True)
-                self.parent_win.refresh_list()
+            def run_action(cb):
+                ok, msg = reset_os_baseline()
+                GLib.idle_add(lambda: (
+                    hasattr(self.parent_win, "show_toast") and self.parent_win.show_toast(msg),
+                    hasattr(self.parent_win, "load_apps") and self.parent_win.load_apps(force_reload=True),
+                    hasattr(self.parent_win, "refresh_list") and self.parent_win.refresh_list()
+                ))
+                return ok, msg
+            if hasattr(self.parent_win, "run_task"):
+                self.parent_win.run_task("Resetting OS Baseline...", run_action)
+            else:
+                ok, msg = reset_os_baseline()
+                if hasattr(self.parent_win, "show_toast"):
+                    self.parent_win.show_toast(msg)
+                if hasattr(self.parent_win, "load_apps"):
+                    self.parent_win.load_apps(force_reload=True)
+                    self.parent_win.refresh_list()
         btn_reset.connect("clicked", do_reset)
         box_baseline_btns.append(btn_reset)
 

@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from typing import Dict, Tuple, Optional
 
-from app_encloser.core.config import APPS_DIR, ENCLOSED_DIR, ICONS_DIR, LOCAL_BIN
+from app_encloser.core.config import APPS_DIR, ENCLOSED_DIR, ICONS_DIR, LOCAL_BIN, validate_container_name
 
 
 def parse_desktop_file(path: str) -> Dict[str, str]:
@@ -70,6 +70,10 @@ def find_best_desktop_file(app_files: str, package_name: str = "") -> Tuple[str,
 
 
 def update_desktop_files_for_app(app_dir: str, folder_name: str, display_name: str, wm_class: str, icon_path: str, orig_id: str = ""):
+    valid = validate_container_name(folder_name)
+    if not valid:
+        return
+    folder_name = valid
     display_name = display_name.replace("\r", "").replace("\n", "").strip() or folder_name
     wm_class = wm_class.replace("\r", "").replace("\n", "").strip() or folder_name
     icon_path = icon_path.replace("\r", "").replace("\n", "").strip()
@@ -100,10 +104,15 @@ def update_desktop_files_for_app(app_dir: str, folder_name: str, display_name: s
         f.write(desk_content)
 
     os.makedirs(APPS_DIR, exist_ok=True)
-    main_link = os.path.join(APPS_DIR, f"{folder_name}.desktop")
-    if os.path.lexists(main_link):
-        os.remove(main_link)
-    os.symlink(desk_file, main_link)
+    main_file = os.path.join(APPS_DIR, f"{folder_name}.desktop")
+    if os.path.lexists(main_file):
+        os.remove(main_file)
+    with open(main_file, "w", encoding="utf-8") as f:
+        f.write(desk_content)
+    try:
+        os.chmod(main_file, 0o644)
+    except Exception:
+        pass
 
     if os.path.isdir(APPS_DIR):
         for fn in os.listdir(APPS_DIR):

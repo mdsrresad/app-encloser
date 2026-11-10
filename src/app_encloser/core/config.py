@@ -87,11 +87,27 @@ def clean_folder_name(name: str) -> str:
     return cleaned[0].upper() + cleaned[1:]
 
 
+def validate_container_name(name: str) -> Optional[str]:
+    if not name or not isinstance(name, str):
+        return None
+    s = name.strip()
+    if not s or s in (".", "..") or "/" in s or "\\" in s or "\x00" in s or s.startswith("."):
+        return None
+    try:
+        base_real = os.path.realpath(ENCLOSED_DIR)
+        target_real = os.path.realpath(os.path.join(base_real, s))
+        if os.path.dirname(target_real) != base_real or not target_real.startswith(base_real + os.sep):
+            return None
+        return os.path.basename(target_real)
+    except Exception:
+        return None
+
+
 def is_supported_file(path: str) -> bool:
     low = path.lower()
     return any(low.endswith(ext) for ext in (
         ".deb", ".appimage", ".tar.gz", ".tgz", ".tar.xz", ".tar.bz2",
-        ".zip", ".rpm", ".snap", ".sh", ".run", ".bin", ".jar"
+        ".zip", ".rpm", ".sh", ".run", ".bin", ".jar"
     ))
 
 

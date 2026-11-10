@@ -4,7 +4,7 @@ import tarfile
 import subprocess
 from typing import Dict, List, Tuple
 
-from app_encloser.core.config import ENCLOSED_DIR, APPS_DIR, ICONS_DIR, invalidate_dir_size_cache
+from app_encloser.core.config import ENCLOSED_DIR, APPS_DIR, ICONS_DIR, invalidate_dir_size_cache, validate_container_name
 from app_encloser.core.lifecycle import repair_app
 
 
@@ -13,6 +13,10 @@ def export_selective(dest_tar: str, selections: Dict[str, Dict[str, bool]]) -> T
         os.makedirs(os.path.dirname(os.path.abspath(dest_tar)), exist_ok=True)
         with tarfile.open(dest_tar, "w:gz") as tf:
             for folder, opts in selections.items():
+                valid = validate_container_name(folder)
+                if not valid:
+                    continue
+                folder = valid
                 app_dir = os.path.join(ENCLOSED_DIR, folder)
                 if not os.path.isdir(app_dir):
                     continue

@@ -98,6 +98,7 @@ def analyze_host_packages_safety_batch(pkg_names: List[str]) -> Dict[str, Dict[s
         return res_map
 
     rdeps_by_pkg: Dict[str, List[str]] = {p: [] for p in to_query}
+    failed_query = False
     try:
         cmd = ["apt-cache", "rdepends", "--installed"] + to_query
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
@@ -115,18 +116,27 @@ def analyze_host_packages_safety_batch(pkg_names: List[str]) -> Dict[str, Dict[s
                     if item and item != current_pkg and not item.startswith(current_pkg + "-") and not current_pkg.startswith(item + "-"):
                         if item not in rdeps_by_pkg[current_pkg]:
                             rdeps_by_pkg[current_pkg].append(item)
+        else:
+            failed_query = True
     except Exception:
-        pass
+        failed_query = True
 
     for p in to_query:
-        rd = rdeps_by_pkg.get(p, [])
-        safe = (len(rd) == 0)
-        badge = "Safe to Remove" if safe else f"Used by {len(rd)} pkg(s)"
-        info = {
-            "safe_to_remove": safe,
-            "rdeps": rd,
-            "safety_badge": badge
-        }
+        if failed_query:
+            info = {
+                "safe_to_remove": False,
+                "rdeps": ["check_failed"],
+                "safety_badge": "Verify Manually"
+            }
+        else:
+            rd = rdeps_by_pkg.get(p, [])
+            safe = (len(rd) == 0)
+            badge = "Safe to Remove" if safe else f"Used by {len(rd)} pkg(s)"
+            info = {
+                "safe_to_remove": safe,
+                "rdeps": rd,
+                "safety_badge": badge
+            }
         _RDEPS_CACHE[p] = info
         res_map[p] = info
 
@@ -137,11 +147,11 @@ def analyze_host_package_safety(pkg_name: str) -> Dict[str, Any]:
     global _RDEPS_CACHE
     clean_pkg = pkg_name.split(":")[0].strip().lower()
     if not clean_pkg:
-        return {"safe_to_remove": True, "rdeps": [], "safety_badge": "Safe to Remove"}
+        return {"safe_to_remove": False, "rdeps": ["invalid_package"], "safety_badge": "Verify Manually"}
     if clean_pkg in _RDEPS_CACHE:
         return _RDEPS_CACHE[clean_pkg]
     batch_res = analyze_host_packages_safety_batch([clean_pkg])
-    return batch_res.get(clean_pkg, {"safe_to_remove": True, "rdeps": [], "safety_badge": "Safe to Remove"})
+    return batch_res.get(clean_pkg, {"safe_to_remove": False, "rdeps": ["check_failed"], "safety_badge": "Verify Manually"})
 
 
 def is_protected_system_package(pkg: str) -> bool:
@@ -888,7 +898,6 @@ def audit_all_installations() -> List[Dict[str, Any]]:
             badge_css = "warning" if host_info else "success"
             status_text = "Installed in container and on Host" if host_info else "Isolated inside container"
 
-            record_install_event(entry, entry, cmd_val, "container")
             audit_list.append({
                 "app_name": entry,
                 "folder_name": entry,

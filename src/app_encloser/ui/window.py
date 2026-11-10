@@ -939,10 +939,18 @@ class AppEncloserWindow(Adw.ApplicationWindow):
         if not folders:
             return
         def on_confirm(fldrs):
-            batch_uninstall(fldrs)
-            self.selected_apps.clear()
-            self.refresh_list(force_reload=True)
-            self.show_toast(f"Removed {len(fldrs)} application(s)")
+            def run_action(cb):
+                batch_uninstall(fldrs)
+                GLib.idle_add(lambda: (
+                    self.selected_apps.clear(),
+                    self.refresh_list(force_reload=True),
+                    self.show_toast(f"Removed {len(fldrs)} application(s)")
+                ))
+                return True, f"Removed {len(fldrs)} application(s)"
+            self.run_task(
+                f"Removing {len(fldrs)} application(s)...",
+                run_action
+            )
         ConfirmUninstallDialog(self, folders, on_confirm).show()
 
     def on_uninstall_single_app(self, app: dict):
@@ -996,12 +1004,17 @@ class AppEncloserWindow(Adw.ApplicationWindow):
 
     def on_kill_app(self, app: dict):
         folder = app["folder"]
-        ok, msg, count = kill_app_processes(folder)
-        if count > 0:
-            self.show_toast(f"Force stopped {count} process(es) for {app['name']}")
-        else:
-            self.show_toast(f"No active processes running for {app['name']}")
-        self._poll_running_status()
+        def run_action(cb):
+            ok, msg, count = kill_app_processes(folder)
+            GLib.idle_add(lambda: (
+                self.show_toast(f"Force stopped {count} process(es) for {app['name']}" if count > 0 else f"No active processes running for {app['name']}"),
+                self._poll_running_status()
+            ))
+            return ok, msg
+        self.run_task(
+            f"Stopping {app['name']}...",
+            run_action
+        )
 
     def on_show_app_info(self, app: dict):
         AppInfoDialog(
@@ -1112,7 +1125,7 @@ class AppEncloserWindow(Adw.ApplicationWindow):
             label="Standalone Portable Application Encloser for Linux.\n\n"
                   "Runs applications in isolated user directories with private configurations.\n\n"
                   "Open-source personal project provided as-is without warranty.\n"
-                  "Leaves zero residual files on uninstallation.",
+                  "Removes application container and user data cleanly.",
             justify=Gtk.Justification.CENTER,
             wrap=True
         )

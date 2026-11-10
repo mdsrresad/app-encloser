@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.6] - 2026-11-10
+
+### Security & Hardening (Zero-Trust Audit Hardening)
+- **Strict Container Name & Path Containment Validation:** Added `validate_container_name` to reject directory traversal (`..`, `/`, `\0`, leading dots), enforcing container boundaries across `config.py`, `container.py`, `lifecycle.py`, `mcp_server.py`, `security.py`, `diagnostic.py`, and `backup.py`. Uninstallation with path traversal raises `ValueError` before touching files.
+- **Read-Only Sandbox Root & Policy Immutability:** Mounted `$HERE` strictly read-only (`--ro-bind`) inside Bubblewrap strict mode. Only designated runtime data subdirectories in `userdata/` (`home`, `config`, `cache`, `local_share`, `state`, `run`, `logs`, `tmp`, etc.) are mounted read-write. Sandboxed applications cannot modify `launch.sh`, `.desktop`, shims, or security policies.
+- **Preload Isolation:** Prevented host `bwrap` from loading container preload libraries by passing `LD_PRELOAD` via `--setenv` inside the namespace rather than setting it on the host.
+- **Regular Desktop Files:** Desktop entries in `APPS_DIR` are written as regular files (`chmod 0o644`) rather than symlinks.
+- **Static ELF Inspection (Zero `ldd`):** Replaced `ldd` with static ELF parsing using `readelf -d` and `objdump -p` to prevent executing untrusted binaries during dependency diagnostics.
+- **Process Detection CWD Immunity:** Removed working directory (`cwd`) matching from process tracking so host processes working inside the container directory are never killed.
+- **Session D-Bus Filtering:** Session D-Bus socket is filtered in strict mode unless `.allow_dbus` exists or `ENCLOSER_ALLOW_DBUS=1`.
+- **Private `/dev/shm`:** Strict mode mounts private tmpfs for `/dev/shm`.
+- **Confirmation Gate on Destructive MCP Tools:** Destructive MCP tools (`uninstall_isolated_app`, `batch_action`, `kill_container`) now require `"confirm": true` before execution.
+- **Clean Shell Guard Uninstallation:** `self_uninstall` cleans `shell_guard.sh` lines from `~/.bashrc` and `~/.zshrc`.
+- **Shims & History Fixes:** Cleaned stale `.deb` packages before download in `encloser-install`, fixed space-in-filename parsing via `line.split(None, 5)`, copied `sources.list` to isolated `userdata/etc_apt`, defaulted `rdepends` query failures to `safe_to_remove: False`, and removed side effects from audit scanning.
+- **UI Responsiveness & Bug Fixes:** Fixed dead `"Browse Local File..."` button in container installer dialog by removing invalid `FilterListModel` instantiation. Wrapped heavy operations in `self.run_task` to prevent GTK4 UI freezes.
+- **Removed Inflated Claims:** Updated UI and documentation to use precise, factual descriptions ("Kernel namespace isolation", "Ubuntu 24.04 LTS", 36 automated verification checks).
+
+---
+
 ## [1.0.5] - 2026-11-10
 
 ### Bug Fixes & Stability (P0 Audit Hardening)
@@ -72,9 +91,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Built-in Update Engine & In-App Checker:** Added `app-encloser check-updates` and `app-encloser update` CLI commands, along with a real-time "Check for Updates" action in Preferences querying the GitHub Releases API.
 - **Terminal Guard CLI Interface:** Implemented `app-encloser guard [enable|disable|status|sync]` command for full control over shell installation interception directly from terminal.
 - **Active `strict_sandbox_by_default` Setting:** Wired up default isolation preference so newly created containers and apps default to strict Bubblewrap isolation when configured.
-- **Dynamic Multi-Python Compatibility:** Upgraded `self_uninstall.py` to dynamically discover site-packages across Python 3.10, 3.11, 3.12, 3.13, and 3.14 (supporting Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Ubuntu 26.04+, and Debian 12+).
+- **Dynamic Multi-Python Compatibility:** Upgraded `self_uninstall.py` to dynamically discover site-packages across Python 3.10, 3.11, 3.12, 3.13, and 3.14 (supporting Ubuntu 24.04 LTS and Debian 12+).
 - **Code Quality & Resource Cleanup:** Fixed unclosed file handles across `lifecycle.py`, `diagnostic.py`, `app_row.py`, and `info.py`, and corrected regex escaping in `encloser-install`.
-- **Zero-Residue Test Suite:** Updated `build.sh` with `--package-only` flag and added automated pre/post-run test artifact wiping in `tests/verify_all.py` to ensure tests leave zero residual files on the host.
+- **Zero-Residue Test Suite:** Updated `build.sh` with `--package-only` flag and added automated pre/post-run test artifact wiping in `tests/verify_all.py` to ensure tests leave no residual files on the host.
 
 ---
 
@@ -88,7 +107,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **GPG Shim Truthful Exit Codes:** Updated rootless GPG shim to faithfully propagate subprocess return codes rather than faking exit status 0 on failures.
 
 ### Bug Fixes
-- **CLI `uninstall` Command Handler:** Added missing CLI handler for `app-encloser uninstall <AppName>` to execute full zero-residual removal directly from terminal.
+- **CLI `uninstall` Command Handler:** Added missing CLI handler for `app-encloser uninstall <AppName>` to execute full container removal directly from terminal.
 - **Terminal Guard Menu Exception Fix:** Fixed argument signature and package resolution in interactive menu choices (1-3) of `handle_intercept_cmd`, preventing `TypeError` on terminal interception.
 - **Cleaned Legacy Stubs:** Removed unused legacy stubs (`backend.py`, `window.py`) and redundant desktop file definitions.
 
@@ -106,9 +125,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Arbitrary Package Ingestion:** Direct encapsulation of `.deb`, `.AppImage`, `.tar.gz`, `.zip`, `.rpm`, `.jar`, and arbitrary multi-line bash install scripts into `~/EnclosedApps/<AppName>/`.
 - **Three Isolation Levels:**
   - **Standard Isolated:** Private `$HOME`, `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME`, and `$TMPDIR`.
-  - **Strict Sandbox:** Kernel namespace virtualization via Bubblewrap (`bwrap`) with read-only root mounts and tmpfs home shielding. Zero leaks outside container.
+  - **Strict Sandbox:** Kernel namespace virtualization via Bubblewrap (`bwrap`) with read-only root mounts and tmpfs home shielding.
   - **System Integrated:** Direct host network and service access enabled for background daemons, CLI tools, and VPNs.
-- **100% Zero-Residual Wipe:** Total deletion of application directory leaves zero residual files in `~/.config`, `~/.cache`, or `/var`.
+- **Clean Application Removal:** Total deletion of application directory removes container files cleanly without leaving unmanaged entries.
 - **Native Wayland & Hardware Acceleration:** Direct pass-through for Wayland display sockets and PipeWire/PulseAudio without socket-forwarding daemons or performance degradation.
 
 #### Container Universe Experience
