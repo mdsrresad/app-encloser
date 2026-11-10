@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.8] - 2026-11-10
+
+### Fixed & Enhanced
+- **GNU `install` Coreutils Shim:** Added dedicated `install` shim (`src/app_encloser/data/shims/install`) supporting `-DTm644`, `-t`, and flag combinations. Shell-based repository installers (e.g. `curl -fsS https://dl.brave.com/install.sh | sh` or multi-line install scripts) writing keys to `/usr/share/keyrings` or repositories to `/etc/apt/sources.list.d` are seamlessly redirected to isolated container directories (`userdata/keyrings` and `userdata/etc_apt/sources.list.d`), preventing "Permission denied" errors.
+- **Relative Symlink Resolution for `/opt` Applications:** Enhanced `fix_usrmerge_symlinks` and `encloser-install:fix_links` to scan and convert package symlinks pointing to absolute paths (e.g. `usr/bin/brave-browser-stable -> /opt/brave.com/brave/brave-browser`) to relative internal symlinks (`../../opt/brave.com/brave/brave-browser`), allowing binaries located in `app_files/opt` to resolve correctly both inside and outside container environments.
+- **Container Script PATH Sanitation:** Added `$HERE/userdata/shims` to the front of `PATH` inside `container_install.sh` so scripted container installations invoke container shims (`install`, `curl`, `apt`, `sudo`) with top priority.
+- **Distro Base Repository Forwarding:** `apt` and `apt-get` shims now copy host base distribution sources (`ubuntu.sources` / `debian.sources`) into isolated `userdata/etc_apt/sources.list.d/`, allowing container APT installations to resolve distribution dependencies while isolating third-party repositories.
+- **Kernel User Namespace Guard:** `create_empty_container` verifies `is_bwrap_supported()` so environments where the host kernel restricts unprivileged user namespaces gracefully fall back to standard container mode without exit code 126 errors.
+
+---
+
 ## [1.0.7] - 2026-11-10
 
 ### Fixed & Enhanced

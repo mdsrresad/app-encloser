@@ -27,7 +27,7 @@ def find_lib_dirs(app_files: str, prefix: str = "$HERE/app_files") -> List[str]:
     return sorted(lib_dirs)
 
 
-SHIM_BINARY_NAMES = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"}
+SHIM_BINARY_NAMES = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"}
 
 
 def is_valid_app_binary(file_path: str) -> bool:
@@ -904,7 +904,7 @@ def inspect_container_contents(folder_name: str) -> Dict[str, Any]:
 def create_empty_container(folder_name: str, strict: Optional[bool] = None) -> Tuple[bool, str]:
     if strict is None:
         from app_encloser.core.config import get_setting
-        strict = get_setting("strict_sandbox_by_default", True)
+        strict = get_setting("strict_sandbox_by_default", True) and is_bwrap_supported()
     folder_clean = clean_folder_name(folder_name)
     app_dir = os.path.join(ENCLOSED_DIR, folder_clean)
     if os.path.isdir(app_dir):

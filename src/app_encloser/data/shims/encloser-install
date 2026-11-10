@@ -50,6 +50,20 @@ def fix_links(dest_dir: str):
                     os.chmod(t, 0o755)
                 except OSError as e:
                     sys.stderr.write(f"chmod error {t}: {e}\n")
+    for root, _dirs, files in os.walk(dest_dir):
+        for f in files:
+            p = os.path.join(root, f)
+            if os.path.islink(p):
+                try:
+                    t = os.readlink(p)
+                    if t.startswith("/"):
+                        internal = os.path.join(dest_dir, t.lstrip("/"))
+                        if os.path.exists(internal):
+                            rel_target = os.path.relpath(internal, os.path.dirname(p))
+                            os.remove(p)
+                            os.symlink(rel_target, p)
+                except Exception:
+                    pass
 
 def is_safe_exec(p: str) -> bool:
     if not p or not isinstance(p, str):

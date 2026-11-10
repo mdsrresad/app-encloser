@@ -1210,7 +1210,7 @@ def test_container_universe_shims_and_non_recursive():
     assert ok, f"Failed to create container: {msg}"
 
     shims_dir = os.path.join(app_dir, "userdata", "shims")
-    expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"}
+    expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"}
     found_shims = set(os.listdir(shims_dir))
     for s in expected_shims:
         assert s in found_shims, f"Shim '{s}' missing from {shims_dir}"

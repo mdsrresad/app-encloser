@@ -760,7 +760,7 @@ def detect_container_anomalies(folder_name: str) -> List[Dict[str, Any]]:
         return [{"type": "missing_container", "item": folder_name, "severity": "critical", "description": f"Container directory not found: {folder_name}"}]
 
     shims_dir = os.path.join(app_dir, "userdata", "shims")
-    expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"}
+    expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"}
     if not os.path.isdir(shims_dir):
         anomalies.append({"type": "missing_shims_dir", "item": "userdata/shims", "severity": "high", "description": "Shims directory is missing"})
     else:
@@ -871,7 +871,7 @@ def auto_repair_container(folder_name: str) -> Dict[str, Any]:
 
     stale_shim_dir = os.path.join(app_dir, "app_files", "usr", "bin")
     if os.path.isdir(stale_shim_dir):
-        expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"}
+        expected_shims = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"}
         for s in expected_shims:
             sp = os.path.join(stale_shim_dir, s)
             if os.path.isfile(sp):

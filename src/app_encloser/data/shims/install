@@ -1,0 +1,100 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import shutil
+
+app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
+etc_apt = os.path.join(app_dir, "userdata", "etc_apt", "sources.list.d")
+user_bin = os.path.join(app_dir, "userdata", "bin")
+
+os.makedirs(keyrings_dir, exist_ok=True)
+os.makedirs(etc_apt, exist_ok=True)
+os.makedirs(user_bin, exist_ok=True)
+
+real_install = "/usr/bin/install"
+if not os.path.isfile(real_install):
+    for c in ("/bin/install", "/usr/local/bin/install"):
+        if os.path.isfile(c):
+            real_install = c
+            break
+
+child_env = os.environ.copy()
+cur_shims = os.path.dirname(os.path.abspath(__file__))
+p_parts = [p for p in child_env.get("PATH", "").split(":") if p and p != cur_shims]
+child_env["PATH"] = ":".join(p_parts)
+
+args = sys.argv[1:]
+new_args = []
+installed_sources = []
+
+flags_with_val = {"-g", "--group", "-m", "--mode", "-o", "--owner", "-S", "--suffix", "-t", "--target-directory"}
+
+i = 0
+while i < len(args):
+    arg = args[i]
+    if arg in ("-t", "--target-directory") and i + 1 < len(args):
+        val = args[i + 1]
+        if "/usr/share/keyrings" in val or "/etc/apt/keyrings" in val:
+            val = keyrings_dir
+        elif "/etc/apt/sources.list.d" in val:
+            val = etc_apt
+        elif val in ("/usr/local/bin", "/usr/bin", "/bin"):
+            val = user_bin
+        new_args.extend([arg, val])
+        i += 2
+        continue
+    elif arg.startswith("--target-directory="):
+        val = arg.split("=", 1)[1]
+        if "/usr/share/keyrings" in val or "/etc/apt/keyrings" in val:
+            val = keyrings_dir
+        elif "/etc/apt/sources.list.d" in val:
+            val = etc_apt
+        elif val in ("/usr/local/bin", "/usr/bin", "/bin"):
+            val = user_bin
+        new_args.append(f"--target-directory={val}")
+        i += 1
+        continue
+    elif arg in flags_with_val and i + 1 < len(args):
+        new_args.extend([arg, args[i + 1]])
+        i += 2
+        continue
+    elif not arg.startswith("-"):
+        fn = os.path.basename(arg)
+        if "/usr/share/keyrings" in arg or "/etc/apt/keyrings" in arg:
+            target_path = os.path.join(keyrings_dir, fn)
+            new_args.append(target_path)
+            i += 1
+            continue
+        elif "/etc/apt/sources.list.d" in arg:
+            target_path = os.path.join(etc_apt, fn)
+            new_args.append(target_path)
+            installed_sources.append(target_path)
+            i += 1
+            continue
+        elif arg.startswith(("/usr/local/bin/", "/usr/bin/", "/bin/")):
+            target_path = os.path.join(user_bin, fn)
+            new_args.append(target_path)
+            i += 1
+            continue
+
+    new_args.append(arg)
+    i += 1
+
+res = subprocess.run([real_install] + new_args, env=child_env)
+
+for fpath in installed_sources:
+    if os.path.isfile(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            if "/usr/share/keyrings" in content or "/etc/apt/keyrings" in content:
+                content = content.replace("/usr/share/keyrings/", keyrings_dir.rstrip("/") + "/")
+                content = content.replace("/etc/apt/keyrings/", keyrings_dir.rstrip("/") + "/")
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(content)
+        except Exception:
+            pass
+
+sys.exit(res.returncode)

@@ -52,6 +52,20 @@ def fix_usrmerge_symlinks(dest_dir: str):
                     os.symlink(rel, target)
                 except Exception:
                     pass
+    for root, _dirs, files in os.walk(dest_dir):
+        for f in files:
+            p = os.path.join(root, f)
+            if os.path.islink(p):
+                try:
+                    t = os.readlink(p)
+                    if t.startswith("/"):
+                        internal = os.path.join(dest_dir, t.lstrip("/"))
+                        if os.path.exists(internal):
+                            rel_target = os.path.relpath(internal, os.path.dirname(p))
+                            os.remove(p)
+                            os.symlink(rel_target, p)
+                except Exception:
+                    pass
 
 
 def install_container_helpers(app_dir: str):
@@ -60,7 +74,7 @@ def install_container_helpers(app_dir: str):
 
     old_bin_dir = os.path.join(app_dir, "app_files", "usr", "bin")
     if os.path.isdir(old_bin_dir):
-        for s in ("apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"):
+        for s in ("apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"):
             old_s = os.path.join(old_bin_dir, s)
             if os.path.isfile(old_s) or os.path.islink(old_s):
                 try:
@@ -275,7 +289,7 @@ def repair_app(folder_name: str) -> Tuple[bool, str]:
     cand_local = os.path.join(app_dir, "userdata", "home", ".local", "bin", folder_name.lower())
     rel_exec = None
 
-    SHIMS = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew"}
+    SHIMS = {"apt", "apt-get", "gpg", "tee", "sudo", "nft", "curl", "wget", "encloser-install", "encloser-python", "encloser-brew", "install"}
     if orig_exec:
         cand_desk = resolve_executable(app_files, orig_exec)
         if cand_desk and os.path.basename(cand_desk) not in SHIMS:
@@ -1022,7 +1036,7 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
         script_file = os.path.join(userdata, "tmp", "container_install.sh")
         with open(script_file, "w", encoding="utf-8") as f:
             f.write("#!/usr/bin/env bash\n")
-            f.write('export PATH="$HERE/userdata/bin:$HERE/userdata/home/.local/bin:$HERE/userdata/home/.cargo/bin:$HERE/app_files/usr/bin:$HERE/app_files/bin:$PATH"\n')
+            f.write('export PATH="$HERE/userdata/shims:$HERE/userdata/bin:$HERE/userdata/home/.local/bin:$HERE/userdata/home/.cargo/bin:$HERE/app_files/usr/bin:$HERE/app_files/bin:$PATH"\n')
             f.write(target + "\n")
         os.chmod(script_file, 0o755)
 

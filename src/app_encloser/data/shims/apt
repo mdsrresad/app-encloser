@@ -20,6 +20,12 @@ if [[ "$1" == "update" ]]; then
     if [[ ! -f "$iso_sources" && -f /etc/apt/sources.list ]]; then
         cp /etc/apt/sources.list "$iso_sources" 2>/dev/null || true
     fi
+    if [[ ! -f "$etc_apt/ubuntu.sources" && -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+        cp /etc/apt/sources.list.d/ubuntu.sources "$etc_apt/ubuntu.sources" 2>/dev/null || true
+    fi
+    if [[ ! -f "$etc_apt/debian.sources" && -f /etc/apt/sources.list.d/debian.sources ]]; then
+        cp /etc/apt/sources.list.d/debian.sources "$etc_apt/debian.sources" 2>/dev/null || true
+    fi
     if [[ -d "$etc_apt" && $(ls -A "$etc_apt" 2>/dev/null) ]]; then
         /usr/bin/apt-get \
             -o Dir::Etc::sourcelist="${iso_sources:-/etc/apt/sources.list}" \
