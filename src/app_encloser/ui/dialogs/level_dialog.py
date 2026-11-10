@@ -6,7 +6,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Gtk, Adw, Gdk, GLib
 
 from app_encloser.core.container import (
-    get_enclosing_level, get_enclosing_level_details, set_enclosing_level
+    get_enclosing_level, get_enclosing_level_details, set_enclosing_level, is_bwrap_supported
 )
 
 
@@ -103,11 +103,13 @@ class EnclosingLevelDialog(Adw.Window):
 
         row_strict = Adw.ActionRow(
             title="Strict Sandbox (Bubblewrap)",
-            subtitle="Kernel namespace virtualization via bwrap. Complete host filesystem read-only mount and home directory tmpfs masking."
+            subtitle="Kernel namespace virtualization via bwrap. Complete host filesystem read-only mount and home directory tmpfs masking." if is_bwrap_supported() else "Kernel namespace virtualization unavailable (AppArmor unprivileged user namespaces restricted). Standard isolation is enforced."
         )
         row_strict.set_icon_name("security-high-symbolic")
         row_strict.add_suffix(self.rb_strict)
         row_strict.set_activatable_widget(self.rb_strict)
+        if not is_bwrap_supported():
+            self.rb_strict.set_sensitive(False)
         grp_levels.add(row_strict)
 
         self.rb_integrated = Gtk.CheckButton()

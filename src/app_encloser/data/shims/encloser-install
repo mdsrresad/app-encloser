@@ -91,7 +91,7 @@ def resolve_exec(app_f: str) -> str:
 
 def get_missing_apt_dependencies(pkg: str) -> list:
     cmd = [
-        "apt-cache", "depends", "--recurse",
+        "apt-cache", "depends",
         "--no-recommends", "--no-suggests", "--no-conflicts",
         "--no-breaks", "--no-replaces", "--no-enhances", pkg
     ]
@@ -115,7 +115,9 @@ def get_missing_apt_dependencies(pkg: str) -> list:
     for d in deps:
         q = subprocess.run(["dpkg-query", "-W", "-f=${Status}", d], capture_output=True, text=True)
         if q.returncode != 0 or "install ok installed" not in q.stdout:
-            missing.append(d)
+            cand_check = subprocess.run(["apt-cache", "policy", d], capture_output=True, text=True)
+            if "Candidate: (none)" not in cand_check.stdout and "Candidate:" in cand_check.stdout:
+                missing.append(d)
     return missing
 
 def main():

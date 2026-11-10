@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.10] - 2026-11-10
+
+### Fixed & Enhanced
+- **Bubblewrap Graceful Isolation Fallback:** Updated container `launch.sh` so that when the host kernel restricts unprivileged user namespaces (e.g. Ubuntu 24.04 `kernel.apparmor_restrict_unprivileged_userns = 1`), App Encloser logs a clear warning to `last_run.log` and automatically falls back to standard container isolation rather than aborting with exit code 126.
+- **Reliable Exit Status Recording:** Enhanced `launch.sh:cleanup_pid` trap handler to record the actual process exit code to `$STATUS_FILE` across all exits, interruptions, and traps.
+- **Accurate Diagnostic Error Detection:** Enhanced `analyze_container_incompatibility` in `diagnostic.py` to identify Bubblewrap sandbox boundary restrictions and container initialization failures, providing actionable guidance to switch isolation profiles rather than erroneously reporting "Healthy".
+- **Kernel Capability Guard for Strict Isolation:** `lifecycle.py` and `level_dialog.py` now check `is_bwrap_supported()`, ensuring containers are configured for standard isolation by default when user namespaces are restricted, and disabling unavailable strict radio selections in the GUI.
+- **Optimized APT Dependency Ingestion:** Streamlined `get_missing_apt_dependencies` in `encloser-install` by removing redundant full-tree `--recurse` scans and filtering virtual package providers with `apt-cache policy`, preventing unnecessary downloads of already satisfied host base packages.
+- **Single-Command APT Detection:** Added fast-path recognition for single package APT install commands (e.g. `sudo apt install <pkg>`) in `install_from_url_or_repo`, directly invoking `install_any_package` for instant enclosure.
+- **Python Import Precedence Hardening:** Updated `debian/usr/bin/app-encloser` wrapper to always position `site.getusersitepackages()` at index 0 of `sys.path`, ensuring local user upgrades take immediate precedence over system packages.
+
+---
+
 ## [1.0.9] - 2026-11-10
 
 ### Fixed & Enhanced

@@ -840,8 +840,11 @@ def test_runtime_isolation_and_bwrap_tmpfs():
             sub_mask = subprocess.run([launch_sh, "--exec", "sh", "-c", '[ ! -f "$HOST_USER_HOME/.bashrc" ] && echo "MASKED"'], capture_output=True, text=True)
             assert "MASKED" in sub_mask.stdout, "Host home directory files were not masked with tmpfs!"
         else:
-            sub_fail_closed = subprocess.run([launch_sh, "--exec", "echo", "test"], capture_output=True)
-            assert sub_fail_closed.returncode == 126, "Fail-closed check failed when bwrap unprivileged userns unavailable!"
+            sub_fallback = subprocess.run([launch_sh, "--exec", "echo", "test"], capture_output=True, text=True)
+            assert sub_fallback.returncode == 0, "Graceful standard container fallback failed when bwrap unprivileged userns unavailable!"
+            with open(os.path.join(app_dir, "userdata", "last_run.log"), "r", encoding="utf-8") as lf:
+                log_c = lf.read()
+            assert "test" in sub_fallback.stdout or "test" in log_c, "Container did not execute under standard isolation fallback!"
     else:
         backend.uninstall_enclosed_app(folder)
         print_test("16. Per-Container Python/Runtime Isolation & Bwrap Tmpfs", True,

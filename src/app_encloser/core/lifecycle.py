@@ -827,8 +827,8 @@ def install_any_package(pkg_path: str, status_cb=None, scope: Optional[str] = No
     with open(os.path.join(app_dir, ".wayland_id"), "w", encoding="utf-8") as f:
         f.write(wm_class)
 
-    from app_encloser.core.container import set_enclosing_level
-    default_strict = get_setting("strict_sandbox_by_default", True)
+    from app_encloser.core.container import set_enclosing_level, is_bwrap_supported
+    default_strict = get_setting("strict_sandbox_by_default", True) and is_bwrap_supported()
     set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
     write_launch_script(app_dir, rel_exec, fmt)
@@ -858,6 +858,14 @@ def detect_command_or_script(text: str) -> bool:
 
 
 def install_from_url_or_repo(target: str, status_cb=None, scope: Optional[str] = None) -> Tuple[bool, str]:
+    s_target = target.strip()
+    m_apt = re.match(r"^(?:sudo\s+)?(?:apt|apt-get)\s+install(?:\s+-[a-zA-Z0-9\-]+)*\s+([a-zA-Z0-9_\-\.\+]+)$", s_target)
+    if m_apt:
+        pkg_cand = m_apt.group(1).strip()
+        ok_p, msg_p = install_any_package(pkg_cand, status_cb, scope=scope)
+        if ok_p:
+            return ok_p, msg_p
+
     if target.startswith(("http://", "https://")):
         if status_cb:
             status_cb(f"Downloading from {target}...")
@@ -948,7 +956,9 @@ def install_from_url_or_repo(target: str, status_cb=None, scope: Optional[str] =
         app_dir = os.path.join(ENCLOSED_DIR, cname)
         was_created = False
         target_strict = False
-        if scope == "strict" or (scope != "standard" and scope != "integrated" and get_setting("strict_sandbox_by_default", True) and is_bwrap_supported()):
+        if scope == "strict" and is_bwrap_supported():
+            target_strict = True
+        elif scope not in ("standard", "integrated") and get_setting("strict_sandbox_by_default", True) and is_bwrap_supported():
             target_strict = True
         if not os.path.isdir(app_dir):
             ok, msg = create_empty_container(cname, strict=target_strict)
@@ -1088,7 +1098,8 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
         if scope:
             set_enclosing_level(folder_name, scope)
         elif not os.path.isfile(os.path.join(app_dir, ".enclosing_level")):
-            default_strict = get_setting("strict_sandbox_by_default", True)
+            from app_encloser.core.container import is_bwrap_supported
+            default_strict = get_setting("strict_sandbox_by_default", True) and is_bwrap_supported()
             set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
         if post_exec:

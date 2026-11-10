@@ -390,16 +390,32 @@ def _analyze_container_incompatibility_inner(folder_name: str) -> Dict[str, Any]
                 "host_arch": h_arch,
             }
 
-        if "bwrap: setting up uid map: Permission denied" in line:
+        if any(term in line for term in ("bwrap: setting up uid map: Permission denied", "Bubblewrap sandbox initialization failed", "[App Encloser ERROR] Bubblewrap")):
             return {
                 "has_error": True,
-                "status": "Sandbox Permission Denied",
+                "status": "Sandbox Boundary Restriction (Bubblewrap)",
                 "category": "sandbox_permission",
-                "summary": "Bubblewrap sandbox cannot create unprivileged user namespaces due to host AppArmor/kernel restriction.",
+                "summary": "Bubblewrap sandbox cannot initialize due to host kernel user namespace restrictions.",
+                "details": [line],
+                "missing_libraries": [],
+                "exit_code": last_exit_code or 126,
+                "recommendation": "Switch enclosing level to 'Standard Isolated' (app-encloser level <app> standard) which isolates without requiring kernel namespace privileges.",
+                "log_excerpt": log_excerpt,
+                "full_log": full_log,
+                "binary_arch": b_arch,
+                "host_arch": h_arch,
+            }
+
+        if line.startswith("[App Encloser ERROR]"):
+            return {
+                "has_error": True,
+                "status": "Container Launch Error",
+                "category": "container_launch_error",
+                "summary": line.replace("[App Encloser ERROR]", "").strip(),
                 "details": [line],
                 "missing_libraries": [],
                 "exit_code": last_exit_code or 1,
-                "recommendation": "Configure host AppArmor user namespace permissions or standard fallback will be used automatically.",
+                "recommendation": "Inspect execution log excerpt below to resolve reported container configuration error.",
                 "log_excerpt": log_excerpt,
                 "full_log": full_log,
                 "binary_arch": b_arch,

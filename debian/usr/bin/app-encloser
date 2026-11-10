@@ -3,25 +3,24 @@ import sys
 import os
 import site
 
-sys_paths = [
-    "/usr/lib/python3/dist-packages",
-    site.getusersitepackages(),
-]
+user_site = site.getusersitepackages()
+if os.path.isdir(user_site):
+    if user_site in sys.path:
+        sys.path.remove(user_site)
+    sys.path.insert(0, user_site)
 
 curr = os.path.dirname(os.path.realpath(__file__))
 while curr and curr != "/":
     cand_src = os.path.join(curr, "src")
     if os.path.isdir(cand_src) and os.path.isfile(os.path.join(cand_src, "app_encloser", "__init__.py")):
-        sys_paths.append(cand_src)
+        if cand_src in sys.path:
+            sys.path.remove(cand_src)
+        sys.path.insert(0, cand_src)
         break
     parent = os.path.dirname(curr)
     if parent == curr:
         break
     curr = parent
-
-for p in sys_paths:
-    if os.path.isdir(p) and p not in sys.path:
-        sys.path.insert(0, p)
 
 from app_encloser.main import main
 
