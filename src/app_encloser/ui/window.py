@@ -131,8 +131,8 @@ class AppEncloserWindow(Adw.ApplicationWindow):
         self.status_lbl.set_hexpand(True)
         self.status_lbl.set_ellipsize(Pango.EllipsizeMode.END)
         self.status_lbl.set_wrap(False)
-        self.status_lbl.set_width_chars(20)
-        self.status_lbl.set_max_width_chars(50)
+        self.status_lbl.set_width_chars(35)
+        self.status_lbl.set_max_width_chars(80)
         self.status_bar.append(self.status_lbl)
 
         self.status_progress = Gtk.ProgressBar()
@@ -1166,8 +1166,27 @@ class AppEncloserWindow(Adw.ApplicationWindow):
 
         def worker():
             def cb(m):
-                safe_m = GLib.markup_escape_text(m)
-                GLib.idle_add(lambda: self.status_lbl.set_markup(f"<b>{safe_m}</b>"))
+                raw_text = str(m)
+                clean_m = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', raw_text).strip()
+                if not clean_m:
+                    return
+                m_pct = re.search(r'(\d{1,3})%', clean_m)
+                if m_pct:
+                    try:
+                        pct_val = float(m_pct.group(1)) / 100.0
+                        if 0.0 <= pct_val <= 1.0:
+                            pulse_box[0] = False
+                            GLib.idle_add(lambda v=pct_val: self.status_progress.set_fraction(v))
+                    except Exception:
+                        pass
+                disp_text = clean_m
+                if len(disp_text) > 85:
+                    disp_text = disp_text[:82] + "..."
+                safe_m = GLib.markup_escape_text(disp_text)
+                GLib.idle_add(lambda: (
+                    self.status_lbl.set_markup(f"<b>{safe_m}</b>"),
+                    self.status_lbl.set_tooltip_text(clean_m)
+                ))
             try:
                 res = fn(cb)
                 if isinstance(res, tuple) and len(res) == 2:

@@ -569,13 +569,23 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         'fi',
         'if [[ "$IS_CUSTOM_CMD" -eq 1 ]]; then',
         '    cd "$HOME" 2>/dev/null || cd "$HERE"',
-        '    if [[ -t 1 ]]; then',
+        '    if [[ -t 1 || "$ENCLOSER_STREAM_LOG" == "1" ]]; then',
         '        if [[ ${#BWRAP_CMD[@]} -gt 0 ]]; then',
-        '            "${BWRAP_CMD[@]}" "${RUN_CMD[@]}"',
-        '            EC=$?',
+        '            if [[ "$ENCLOSER_STREAM_LOG" == "1" ]]; then',
+        '                "${BWRAP_CMD[@]}" "${RUN_CMD[@]}" 2>&1 | tee "$LOG_FILE"',
+        '                EC="${PIPESTATUS[0]}"',
+        '            else',
+        '                "${BWRAP_CMD[@]}" "${RUN_CMD[@]}"',
+        '                EC=$?',
+        '            fi',
         '        else',
-        '            "${RUN_CMD[@]}"',
-        '            EC=$?',
+        '            if [[ "$ENCLOSER_STREAM_LOG" == "1" ]]; then',
+        '                "${RUN_CMD[@]}" 2>&1 | tee "$LOG_FILE"',
+        '                EC="${PIPESTATUS[0]}"',
+        '            else',
+        '                "${RUN_CMD[@]}"',
+        '                EC=$?',
+        '            fi',
         '        fi',
         '    else',
         '        if [[ ${#BWRAP_CMD[@]} -gt 0 ]]; then',
@@ -617,7 +627,7 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
     os.chmod(launch_sh, 0o755)
 
 
-def run_in_container(folder_name: str, cmd_args: List[str], env_vars: Optional[Dict[str, str]] = None) -> int:
+def run_in_container(folder_name: str, cmd_args: List[str], env_vars: Optional[Dict[str, str]] = None, status_cb: Optional[Any] = None) -> int:
     valid = validate_container_name(folder_name)
     if not valid:
         return 1
@@ -641,10 +651,40 @@ def run_in_container(folder_name: str, cmd_args: List[str], env_vars: Optional[D
                 os.chmod(launch_sh, 0o755)
             except Exception:
                 pass
-        if cmd_args:
-            clean_args = list(cmd_args)
-            if clean_args[0] == "--exec":
-                clean_args = clean_args[1:]
+        clean_args = list(cmd_args) if cmd_args else []
+        if clean_args and clean_args[0] == "--exec":
+            clean_args = clean_args[1:]
+        if status_cb:
+            env["ENCLOSER_STREAM_LOG"] = "1"
+            env["PYTHONUNBUFFERED"] = "1"
+            import re
+            proc = subprocess.Popen(
+                [launch_sh, "--exec"] + clean_args,
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                bufsize=0
+            )
+            buf = b""
+            while True:
+                chunk = proc.stdout.read(64)
+                if not chunk:
+                    break
+                buf += chunk
+                parts = re.split(b'[\r\n]+', buf)
+                if len(parts) > 1:
+                    for p in parts[:-1]:
+                        s = p.decode('utf-8', errors='replace').strip()
+                        if s:
+                            status_cb(s)
+                    buf = parts[-1]
+            if buf:
+                s = buf.decode('utf-8', errors='replace').strip()
+                if s:
+                    status_cb(s)
+            proc.wait()
+            return proc.returncode
+        if clean_args:
             return subprocess.run([launch_sh, "--exec"] + clean_args, env=env).returncode
         return subprocess.run([launch_sh], env=env).returncode
     return 1

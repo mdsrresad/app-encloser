@@ -905,10 +905,28 @@ def install_from_url_or_repo(target: str, status_cb=None, scope: Optional[str] =
                 cname = clean_folder_name(found_pkg.title())
                 target = target.rstrip() + f"\nsudo apt-get install -y {found_pkg}\n"
 
+        if not found_pkg:
+            urls = re.findall(r'https?://[a-zA-Z0-9_\-\.]+(?:/[a-zA-Z0-9_\-\.]+)*', target)
+            for u in urls:
+                gh = re.search(r'github(?:usercontent)?\.com/[^/]+/([a-zA-Z0-9_\-\.]+)', u)
+                if gh:
+                    cand = gh.group(1).replace('.git', '')
+                    if cand.lower() not in PREREQ_PKGS:
+                        found_pkg = cand
+                        cname = clean_folder_name(found_pkg.title())
+                        break
+                domain = re.search(r'https?://(?:[a-zA-Z0-9_\-]+\.)*([a-zA-Z0-9_\-]+)\.(?:com|org|io|dev|app|net|co)', u)
+                if domain:
+                    cand = domain.group(1)
+                    if cand.lower() not in ("github", "gitlab", "bitbucket", "raw", "dl", "s3", "packages", "apt", "repo") and cand.lower() not in PREREQ_PKGS:
+                        found_pkg = cand
+                        cname = clean_folder_name(found_pkg.title())
+                        break
+
         if cname == "Custom-App":
             for line in lines:
                 first_w = line.split()[0]
-                if first_w.lower() not in ("sudo", "export", "echo", "set", "cd"):
+                if first_w.lower() not in ("sudo", "export", "echo", "set", "cd") and first_w.lower() not in PREREQ_PKGS:
                     cname = clean_folder_name(first_w.title())
                     break
 
@@ -1011,7 +1029,7 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
         if status_cb:
             status_cb(f"Executing script inside container '{folder_name}'...")
 
-        rc = run_in_container(folder_name, ["/bin/bash", script_file])
+        rc = run_in_container(folder_name, ["/bin/bash", script_file], status_cb=status_cb)
         post_exec = None
         user_target_exec = os.path.join(userdata, "target_exec")
         if os.path.isfile(user_target_exec):

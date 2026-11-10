@@ -212,8 +212,9 @@ def main():
         if missing_deps:
             print(f"[*] Found {len(missing_deps)} missing host dependencies: {', '.join(missing_deps)}")
             for dep in missing_deps:
+                print(f"[*] Downloading dependency '{dep}' via APT...")
                 dep_cmd = list(apt_cmd) + ["download", dep]
-                subprocess.run(dep_cmd, cwd=dl_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(dep_cmd, cwd=dl_dir)
 
         print(f"[*] Fetching {pkg} via APT...")
         download_cmd = list(apt_cmd) + ["download", pkg]
