@@ -349,19 +349,13 @@ def main():
         try:
             with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:
                 f.write(safe_bin)
-        except OSError as e:
-            sys.stderr.write(f"target_exec write error: {e}\n")
-        launch_sh = os.path.join(app_dir, "launch.sh")
-        if os.path.isfile(launch_sh):
-            try:
-                with open(launch_sh, "r", encoding="utf-8") as lf:
-                    lcontent = lf.read()
-                new_lcontent = re.sub(r"REL_EXEC='[^']*'", f"REL_EXEC='{safe_bin}'", lcontent)
-                new_lcontent = re.sub(r'TARGET_BIN="\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{safe_bin}"', new_lcontent)
-                with open(launch_sh, "w", encoding="utf-8") as lf:
-                    lf.write(new_lcontent)
-            except OSError as e:
-                sys.stderr.write(f"launch_sh update error: {e}\n")
+        except OSError:
+            pass
+        try:
+            with open(os.path.join(app_dir, "userdata", "target_exec"), "w", encoding="utf-8") as f:
+                f.write(safe_bin)
+        except OSError:
+            pass
 
     icon_copied = False
     icon_targets = []

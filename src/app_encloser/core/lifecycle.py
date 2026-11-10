@@ -1013,6 +1013,15 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
 
         rc = run_in_container(folder_name, ["/bin/bash", script_file])
         post_exec = None
+        user_target_exec = os.path.join(userdata, "target_exec")
+        if os.path.isfile(user_target_exec):
+            try:
+                with open(user_target_exec, "r", encoding="utf-8") as f:
+                    te = f.read().strip()
+                if te:
+                    post_exec = te
+            except Exception:
+                pass
         user_bin = os.path.join(userdata, "bin")
         user_local_bin = os.path.join(userdata, "home", ".local", "bin")
 
