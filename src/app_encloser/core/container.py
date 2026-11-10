@@ -483,7 +483,7 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        cleanup_pid',
         '        exit 126',
         '    fi',
-        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /home --dir "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
         '    if [[ -f "$HERE/.no_net" || "$ENCLOSER_NO_NET" == "1" ]]; then',
         '        BWRAP_CMD+=(--unshare-net)',
         '    fi',
@@ -686,9 +686,10 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
             continue
         proc_dir = f"/proc/{pid_str}"
         try:
+            exe_link = ""
             try:
                 exe_link = os.path.realpath(f"{proc_dir}/exe")
-                if (app_real and exe_link.startswith(app_real)) or target_match in exe_link:
+                if app_real and (exe_link == app_real or exe_link.startswith(app_real + os.sep)):
                     pids.add(p)
                     continue
             except Exception:
@@ -696,29 +697,21 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
 
             try:
                 cwd_link = os.path.realpath(f"{proc_dir}/cwd")
-                if (app_real and cwd_link.startswith(app_real)) or target_match in cwd_link:
+                if app_real and (cwd_link == app_real or cwd_link.startswith(app_real + os.sep)):
                     pids.add(p)
                     continue
             except Exception:
                 pass
 
-            try:
-                with open(f"{proc_dir}/cmdline", "rb") as f:
-                    cmd = f.read().decode("utf-8", errors="ignore")
-                    if (app_dir and app_dir in cmd) or (app_real and app_real in cmd) or target_match in cmd:
-                        pids.add(p)
-                        continue
-            except Exception:
-                pass
-
-            try:
-                with open(f"{proc_dir}/environ", "rb") as f:
-                    env_data = f.read().decode("utf-8", errors="ignore")
-                    if (app_dir and f"{app_dir}/userdata" in env_data) or (app_real and f"{app_real}/userdata" in env_data) or target_match in env_data:
-                        pids.add(p)
-                        continue
-            except Exception:
-                pass
+            if exe_link.endswith("/bwrap") or exe_link == "/usr/bin/bwrap":
+                try:
+                    with open(f"{proc_dir}/cmdline", "rb") as f:
+                        cmd = f.read().decode("utf-8", errors="ignore")
+                        if (app_real and app_real in cmd) or target_match in cmd:
+                            pids.add(p)
+                            continue
+                except Exception:
+                    pass
         except Exception:
             pass
 

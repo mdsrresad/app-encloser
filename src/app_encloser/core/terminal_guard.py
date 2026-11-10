@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import subprocess
 from typing import Optional
 
@@ -157,23 +158,27 @@ def _run_encloser_install(target: str, level: str = "strict"):
 def handle_intercept_cmd(full_cmd: str) -> int:
     ai_env_vars = (
         "CLAUDECODE", "CLAUDE_CODE", "CODING_AGENT",
-        "CURSOR_TRACE_ID", "AIDER", "CODEX", "MCP_SERVER", "AI_AGENT"
+        "CURSOR_TRACE_ID", "AIDER", "CODEX", "MCP_SERVER", "AI_AGENT", "ANTIGRAVITY_AGENT"
     )
-    is_ai = (not sys.stdin.isatty()) or any(os.environ.get(k) for k in ai_env_vars)
+    is_ai = any(os.environ.get(k) for k in ai_env_vars)
     if is_ai:
         msg = (
             "[App Encloser Guard] AI Agent / Automated Terminal Tool Install Detected:\n"
             f"Command: {full_cmd}\n\n"
-            "To keep this system 100% clean and avoid polluting the Host OS, please choose how to proceed:\n"
+            "To keep this system clean and avoid polluting the Host OS, please choose how to proceed:\n"
             "1. Complete Encloser (Recommended for maximum isolation):\n"
             f"   app-encloser install \"{full_cmd}\" --mode=strict\n"
             "2. Directory Encloser (Standard isolated ~/EnclosedApps environment):\n"
             f"   app-encloser install \"{full_cmd}\" --mode=standard\n"
-            "3. Directly on Host OS (Bypass isolation):\n"
-            f"   APP_ENCLOSER_BYPASS=1 {full_cmd}\n"
         )
         sys.stderr.write(msg)
         sys.exit(2)
+
+    if not sys.stdin.isatty():
+        env = dict(os.environ)
+        env["APP_ENCLOSER_BYPASS"] = "1"
+        res = subprocess.run(full_cmd, shell=True, env=env)
+        return res.returncode
 
     print("=" * 63)
     print("[App Encloser Guard] Terminal Package Installation Intercepted")

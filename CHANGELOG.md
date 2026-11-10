@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.5] - 2026-11-10
+
+### Bug Fixes & Stability (P0 Audit Hardening)
+- **Resolved Missing Imports:** Added missing `import sys` in `lifecycle.py`, `import shutil`, `import subprocess`, and `import re` in `main.py`, `import os` in `mcp_server.py`, and `import re` in `terminal_guard.py`.
+- **Fixed CLI `--mode` Level Assignment:** Corrected `set_enclosing_level` call during `app-encloser install <pkg> --mode=strict` to parse and apply the level to the resolved container folder rather than the human-readable success text.
+- **Fixed Clean-Environment Desktop Shortcut Crash:** Added `ensure_base_dirs()` and `os.makedirs(APPS_DIR, exist_ok=True)` in `desktop.py` to prevent `FileNotFoundError` on fresh user environments lacking `~/.local/share/applications`.
+- **Eliminated Fuzzy Process-Kill Footgun:** Restricted container process tracking to executables and working directories whose realpath resides inside the container directory or matches the container's Bubblewrap process tree, dropping substring matches on `cmdline` and `environ`.
+- **Sanitized RPM Extraction:** Hardened RPM ingestion in `extractor.py` to inspect archive paths via `cpio -t` before extraction and reject members attempting directory traversal or absolute path writes.
+- **Fail-Closed Exact Checksum Matching:** Updated `updater.py` to enforce strict whitespace-delimited equality on checksum filenames, rejecting substring or prefix collisions.
+- **Hardened Strict Sandbox `/home` Masking:** Replaced single-user home masking with `--tmpfs /home --dir "$HOST_USER_HOME" --bind "$HERE" "$HERE"`, preventing visibility into other local users' home directories.
+- **Selective Self-Uninstall Symlink Purge:** Constrained desktop symlink cleanup to symlinks pointing to `~/EnclosedApps` or `app-encloser`, preserving external applications' dangling symlinks.
+- **Scoped AI Agent Interceptor:** Limited automated terminal guard exit-2 interception to explicit AI agent environment variables (`CLAUDE_CODE`, `CURSOR_TRACE_ID`, `AIDER`, `COPILOT`, etc.), allowing standard non-interactive cron jobs and scripts to run normally.
+
+---
+
 ## [1.0.4] - 2026-11-10
 
 ### Security & Hardening

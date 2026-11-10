@@ -104,7 +104,7 @@ App Encloser provides three configurable isolation profiles per application:
    - Masks the real host home directory with an isolated `tmpfs` layer.
    - Passes Wayland/X11 and PulseAudio/PipeWire sockets for interactive desktop integration.
    - Binds the container's directory read-write, strictly preventing modifications outside `~/EnclosedApps/<AppName>/`.
-   - *Security boundary note:* Strict Sandbox enforces kernel filesystem write protection and masks `$HOME`. Shared desktop sockets (X11 display, PulseAudio/PipeWire, session D-Bus) are provided for graphical operation; on X11, clients lack per-window input isolation (Wayland is recommended for full display isolation). Requires unprivileged user namespaces enabled on the host.
+   - *Security boundary note:* Strict Sandbox enforces kernel filesystem write protection and masks `$HOME` with tmpfs. Note that network access is enabled by default (toggleable via `--no-net`). For Chromium and Electron-based applications, unprivileged nested user namespaces are restricted by the kernel, so App Encloser sets `ELECTRON_DISABLE_SANDBOX=1` and passes `--no-sandbox` to the target executable, trading internal Chromium renderer sandboxing for external Bubblewrap container containment (`--ro-bind / /`, `--unshare-pid`, etc.). Sockets for display (Wayland/X11), audio (PulseAudio/PipeWire), and D-Bus are bound read-write for desktop GUI functionality; on X11, clients lack per-window input isolation (Wayland is recommended). Requires unprivileged user namespaces enabled on the host.
 3. **System Integrated:**
    - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management.
 
@@ -229,7 +229,7 @@ sudo apt-get install -y \
 ### Option A: Install via Debian Package (.deb)
 
 ```bash
-sudo dpkg -i app-encloser_1.0.4_all.deb || sudo apt-get install -f -y
+sudo dpkg -i app-encloser_1.0.5_all.deb || sudo apt-get install -f -y
 ```
 
 ### Option B: Build & Install from Source

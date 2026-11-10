@@ -2,7 +2,7 @@ from app_encloser.core.config import (
     REAL_HOME, ENCLOSED_DIR, APPS_DIR, ICONS_DIR, LOCAL_BIN, CONFIG_DIR, CACHE_DIR,
     SETTINGS_FILE, DEFAULT_SETTINGS, load_settings, save_settings, get_setting,
     update_setting, clean_folder_name, is_supported_file, get_dir_size,
-    get_dir_size_bytes, invalidate_dir_size_cache
+    get_dir_size_bytes, invalidate_dir_size_cache, ensure_base_dirs
 )
 from app_encloser.core.container import (
     find_lib_dirs, resolve_executable, is_strict_sandbox, set_strict_sandbox,

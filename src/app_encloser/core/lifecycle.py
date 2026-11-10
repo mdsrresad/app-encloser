@@ -1,4 +1,5 @@
 import os
+import sys
 import re
 import shutil
 import urllib.request
@@ -1620,7 +1621,6 @@ def install_any_package(pkg_path: str, status_cb=None, scope: Optional[str] = No
         f.write(wm_class)
 
     from app_encloser.core.container import set_enclosing_level
-    from app_encloser.core.config import get_setting
     default_strict = get_setting("strict_sandbox_by_default", True)
     set_enclosing_level(folder_name, "strict" if default_strict else "standard")
 
@@ -1851,7 +1851,6 @@ def install_into_container(folder_name: str, pkg_or_url_or_file: str, status_cb=
             post_exec = resolve_executable(app_files, "")
 
         from app_encloser.core.container import set_enclosing_level
-        from app_encloser.core.config import get_setting
         if scope:
             set_enclosing_level(folder_name, scope)
         elif not os.path.isfile(os.path.join(app_dir, ".enclosing_level")):

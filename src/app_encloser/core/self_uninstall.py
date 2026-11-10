@@ -28,11 +28,11 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
                 remove_it = False
                 if os.path.islink(fp):
                     try:
-                        tgt = os.path.realpath(fp)
-                        if "/EnclosedApps/" in tgt or not os.path.exists(tgt):
+                        raw_link = os.readlink(fp)
+                        if "/EnclosedApps/" in raw_link or "app-encloser" in raw_link or "app.encloser" in raw_link or fn.startswith("app.encloser."):
                             remove_it = True
                     except Exception:
-                        remove_it = True
+                        pass
                 elif os.path.isfile(fp):
                     try:
                         with open(fp, "r", errors="ignore") as file_obj:

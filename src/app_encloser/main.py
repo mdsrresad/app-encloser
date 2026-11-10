@@ -1,6 +1,9 @@
 import os
 import sys
 import json
+import shutil
+import subprocess
+import re
 from typing import Optional
 
 src_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -229,7 +232,18 @@ def main() -> int:
         else:
             ok, msg = install_from_url_or_repo(target, status_cb=lambda s: print(f"    -> {s}"), scope=scope)
         if ok and pref_scope != "global" and mode_level:
-            set_enclosing_level(msg, mode_level)
+            folder_target = None
+            if "~/EnclosedApps/" in msg:
+                folder_target = msg.split("~/EnclosedApps/")[-1].strip().split()[0]
+            elif "'" in msg:
+                m_match = re.search(r"'([^']+)'", msg)
+                if m_match:
+                    folder_target = m_match.group(1)
+            if not folder_target:
+                folder_target = find_container_folder(target) or os.path.splitext(os.path.basename(target))[0]
+            if folder_target:
+                clean_target = find_container_folder(folder_target) or folder_target
+                set_enclosing_level(clean_target, mode_level)
         status = "SUCCESS" if ok else "ERROR"
         print(f"[{status}] {msg}")
         return 0 if ok else 1

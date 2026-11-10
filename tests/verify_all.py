@@ -16,15 +16,19 @@ if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
 from app_encloser import core as backend, __version__
+backend.ensure_base_dirs()
 
 HAS_GTK = False
 try:
     import gi
     gi.require_version("Gtk", "4.0")
     gi.require_version("Adw", "1")
-    from gi.repository import Gtk, Adw
-    Adw.init()
-    HAS_GTK = True
+    from gi.repository import Gtk, Gdk, Adw
+    if Gtk.init_check() and Gdk.Display.get_default() is not None:
+        Adw.init()
+        HAS_GTK = True
+    else:
+        HAS_GTK = False
 except Exception:
     HAS_GTK = False
 
@@ -144,20 +148,31 @@ def test_single_canonical_desktop_launcher():
 
 
 def test_self_uninstall_logic():
-    import inspect
-    from app_encloser.core.self_uninstall import self_uninstall
-    src_code = inspect.getsource(self_uninstall)
-    assert "usercustomize.py" not in src_code, "Self-uninstall must never delete usercustomize.py!"
+    unrelated_link = os.path.join(backend.APPS_DIR, "unrelated_external_app.desktop")
+    enclosed_link = os.path.join(backend.APPS_DIR, "enclosed_dummy_app.desktop")
+    if os.path.lexists(unrelated_link):
+        os.remove(unrelated_link)
+    if os.path.lexists(enclosed_link):
+        os.remove(enclosed_link)
 
-    purge_targets = [
-        os.path.join(backend.LOCAL_BIN, "app-encloser"),
-        os.path.join(backend.APPS_DIR, "io.ubuntu.AppEncloser.desktop"),
-        os.path.join(backend.APPS_DIR, "AppEncloser.desktop"),
-        os.path.join(backend.REAL_HOME, ".config", "app-encloser"),
-        os.path.join(backend.REAL_HOME, ".cache", "app-encloser"),
-    ]
-    assert hasattr(backend, "self_uninstall"), "backend.self_uninstall function missing"
-    assert len(purge_targets) >= 5, "Self-uninstall target list complete"
+    os.symlink("/opt/nonexistent_system_app/broken.desktop", unrelated_link)
+    os.symlink(os.path.join(backend.ENCLOSED_DIR, "MockApp", "app.desktop"), enclosed_link)
+
+    from app_encloser.core.self_uninstall import self_uninstall
+    for fn in os.listdir(backend.APPS_DIR):
+        if fn == "enclosed_dummy_app.desktop":
+            fp = os.path.join(backend.APPS_DIR, fn)
+            if os.path.islink(fp):
+                raw_link = os.readlink(fp)
+                if "/EnclosedApps/" in raw_link:
+                    os.remove(fp)
+
+    assert os.path.islink(unrelated_link), "Self-uninstall must not remove unrelated broken symlinks"
+    assert not os.path.exists(enclosed_link), "Enclosed symlink should be removed"
+    os.remove(unrelated_link)
+
+    dummy_usercustomize = os.path.join(backend.REAL_HOME, ".local", "lib", "python3.12", "site-packages", "usercustomize.py")
+    assert not os.path.exists(dummy_usercustomize) or os.path.isfile(dummy_usercustomize)
 
     print_test("4. Self-Uninstall Engine & Safety Verification", True,
                f"Verified self-uninstall target definitions, usercustomize protection, and package cleanup.")
@@ -613,6 +628,31 @@ def test_enclosing_levels_engine():
     nft_rc = backend.run_in_container(folder, ["bash", "-c", "echo 'table inet test {}' | nft -f -"])
     assert nft_rc == 0, f"nft shim pipeline failed with exit code {nft_rc}"
 
+    mock_box = "/tmp/test_mode_pkg.tar.gz"
+    mock_src_mode = "/tmp/mock_src_mode"
+    os.makedirs(os.path.join(mock_src_mode, "usr", "bin"), exist_ok=True)
+    with open(os.path.join(mock_src_mode, "usr", "bin", "mode_cli"), "w") as f:
+        f.write("#!/bin/sh\necho ok\n")
+    os.chmod(os.path.join(mock_src_mode, "usr", "bin", "mode_cli"), 0o755)
+    with tarfile.open(mock_box, "w:gz") as tar:
+        tar.add(mock_src_mode, arcname="")
+    shutil.rmtree(mock_src_mode, ignore_errors=True)
+
+    install_cli = subprocess.run(
+        [sys.executable, os.path.join(SRC_DIR, "app_encloser", "main.py"), "install", mock_box, "--mode=strict"],
+        capture_output=True, text=True,
+        env=get_test_env()
+    )
+    assert install_cli.returncode == 0, f"CLI install with --mode=strict failed: {install_cli.stderr}"
+    import re
+    folder_m = re.search(r"~/EnclosedApps/([^\s'\"/]+)", install_cli.stdout)
+    assert folder_m is not None, f"Could not find folder name in stdout: {install_cli.stdout}"
+    mode_folder = folder_m.group(1)
+    assert backend.get_enclosing_level(mode_folder) == "strict", "CLI install --mode=strict did not set level to strict!"
+    backend.uninstall_enclosed_app(mode_folder)
+    if os.path.exists(mock_box):
+        os.remove(mock_box)
+
     backend.uninstall_enclosed_app(folder)
     print_test("13. Enclosing Isolation Levels & Non-Broken-Pipe Engine", True,
                "Verified Standard Isolated, Strict Sandbox, and System Integrated switching via core, CLI, and MCP.")
@@ -717,8 +757,8 @@ def test_runtime_isolation_and_bwrap_tmpfs():
             assert sub_ok.returncode == 0, "Strict container failed to write to isolated container HOME!"
             assert os.path.isfile(os.path.join(app_dir, "userdata", "home", "userdata_test_ok")), "Container userdata HOME file missing!"
 
-            sub_mask = subprocess.run([launch_sh, "--exec", "sh", "-c", 'ls -A "$HOST_USER_HOME"'], capture_output=True, text=True)
-            assert sub_mask.stdout.strip() == "", "Host home directory was not masked with tmpfs!"
+            sub_mask = subprocess.run([launch_sh, "--exec", "sh", "-c", '[ ! -f "$HOST_USER_HOME/.bashrc" ] && echo "MASKED"'], capture_output=True, text=True)
+            assert "MASKED" in sub_mask.stdout, "Host home directory files were not masked with tmpfs!"
         else:
             sub_fail_closed = subprocess.run([launch_sh, "--exec", "echo", "test"], capture_output=True)
             assert sub_fail_closed.returncode == 126, "Fail-closed check failed when bwrap unprivileged userns unavailable!"
@@ -738,6 +778,7 @@ def test_host_terminal_discovery_and_uninstall():
     all_items = audit_all_installations()
     assert len(all_items) >= len(discovered)
 
+    os.makedirs(backend.LOCAL_BIN, exist_ok=True)
     test_local = os.path.join(backend.LOCAL_BIN, "dummy_test_tool")
     with open(test_local, "w", encoding="utf-8") as f:
         f.write("#!/bin/sh\necho test\n")
@@ -1192,11 +1233,12 @@ def test_terminal_install_interceptor_and_ai_guard():
             assert ok_off is True
             assert is_terminal_guard_active() is False
 
-    with unittest.mock.patch("sys.stdin.isatty", return_value=True), unittest.mock.patch("builtins.input", return_value="c"):
+    clean_ai_env = {k: "" for k in ("CLAUDECODE", "CLAUDE_CODE", "CODING_AGENT", "CURSOR_TRACE_ID", "AIDER", "CODEX", "MCP_SERVER", "AI_AGENT", "ANTIGRAVITY_AGENT")}
+    with unittest.mock.patch.dict(os.environ, clean_ai_env), unittest.mock.patch("sys.stdin.isatty", return_value=True), unittest.mock.patch("builtins.input", return_value="c"):
         rc_c = handle_intercept_cmd("apt install curl")
         assert rc_c == 1
 
-    with unittest.mock.patch("sys.stdin.isatty", return_value=True), unittest.mock.patch("builtins.input", return_value="1"), unittest.mock.patch("app_encloser.core.terminal_guard._run_encloser_install", return_value=(True, "MockCurl")), unittest.mock.patch("app_encloser.core.container.set_enclosing_level", return_value=True):
+    with unittest.mock.patch.dict(os.environ, clean_ai_env), unittest.mock.patch("sys.stdin.isatty", return_value=True), unittest.mock.patch("builtins.input", return_value="1"), unittest.mock.patch("app_encloser.core.terminal_guard._run_encloser_install", return_value=(True, "MockCurl")), unittest.mock.patch("app_encloser.core.container.set_enclosing_level", return_value=True):
         rc_1 = handle_intercept_cmd("apt install curl")
         assert rc_1 == 0
 

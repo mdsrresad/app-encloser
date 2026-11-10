@@ -60,8 +60,25 @@ def extract_deb(deb_path: str, target_dir: str) -> bool:
 
 def extract_rpm(rpm_path: str, target_dir: str) -> bool:
     try:
-        p1 = subprocess.Popen(["rpm2cpio", rpm_path], stdout=subprocess.PIPE)
-        p2 = subprocess.Popen(["cpio", "-idmv"], stdin=p1.stdout, cwd=target_dir, stderr=subprocess.DEVNULL)
+        abs_target = os.path.realpath(target_dir)
+        os.makedirs(abs_target, exist_ok=True)
+        p_list1 = subprocess.Popen(["rpm2cpio", rpm_path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p_list2 = subprocess.Popen(["cpio", "-t"], stdin=p_list1.stdout, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+        p_list1.stdout.close()
+        listing, _ = p_list2.communicate()
+        if p_list2.returncode != 0:
+            return False
+        for raw_entry in listing.splitlines():
+            entry = raw_entry.strip()
+            if not entry:
+                continue
+            if entry.startswith(("/", "\\")) or ".." in entry.split("/"):
+                return False
+            dest_path = os.path.realpath(os.path.join(abs_target, entry))
+            if dest_path != abs_target and not dest_path.startswith(abs_target + os.sep):
+                return False
+        p1 = subprocess.Popen(["rpm2cpio", rpm_path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        p2 = subprocess.Popen(["cpio", "--no-absolute-filenames", "-idmv"], stdin=p1.stdout, cwd=abs_target, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         p1.stdout.close()
         p2.communicate()
         return p2.returncode == 0
