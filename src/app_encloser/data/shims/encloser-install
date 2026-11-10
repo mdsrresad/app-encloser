@@ -221,29 +221,29 @@ def main():
                 "-o", "Debug::NoLocking=1"
             ])
 
-        print(f"[*] Resolving dependency closure for {pkg}...")
+        print(f"[*] Resolving dependency closure for {pkg}...", flush=True)
         missing_deps = get_missing_apt_dependencies(pkg)
         if missing_deps:
-            print(f"[*] Found {len(missing_deps)} missing host dependencies: {', '.join(missing_deps)}")
+            print(f"[*] Found {len(missing_deps)} missing host dependencies: {', '.join(missing_deps)}", flush=True)
             for dep in missing_deps:
-                print(f"[*] Downloading dependency '{dep}' via APT...")
+                print(f"[*] Downloading dependency '{dep}' via APT...", flush=True)
                 dep_cmd = list(apt_cmd) + ["download", dep]
                 subprocess.run(dep_cmd, cwd=dl_dir)
 
-        print(f"[*] Fetching {pkg} via APT...")
+        print(f"[*] Fetching {pkg} via APT...", flush=True)
         download_cmd = list(apt_cmd) + ["download", pkg]
         res = subprocess.run(download_cmd, cwd=dl_dir)
         if res.returncode != 0:
             res = subprocess.run(["apt-get", "-o", f"Dir::Etc::trustedparts={keyrings_dir}", "download", pkg], cwd=dl_dir)
         if res.returncode != 0:
-            print(f"Error: Could not download {pkg}")
+            print(f"Error: Could not download {pkg}", flush=True)
             sys.exit(1)
         pkg_base = pkg.split("=")[0]
         debs = [f for f in os.listdir(dl_dir) if f.endswith(".deb") and pkg_base in f]
         if not debs:
             debs = [f for f in os.listdir(dl_dir) if f.endswith(".deb")]
         if not debs:
-            print("Error: No package archive retrieved.")
+            print("Error: No package archive retrieved.", flush=True)
             sys.exit(1)
         debs.sort(key=lambda fn: os.path.getmtime(os.path.join(dl_dir, fn)), reverse=True)
         target_deb = os.path.join(dl_dir, debs[0])
@@ -256,7 +256,7 @@ def main():
 
     extracted_files = []
     for dep_deb in extra_debs:
-        print(f"[*] Unpacking dependency {os.path.basename(dep_deb)} into container environment...")
+        print(f"[*] Unpacking dependency {os.path.basename(dep_deb)} into container environment...", flush=True)
         try:
             cnt = subprocess.run(["dpkg-deb", "--contents", dep_deb], capture_output=True, text=True)
             if cnt.returncode == 0:
@@ -272,6 +272,7 @@ def main():
         if res.returncode != 0:
             subprocess.run(["dpkg", "-x", dep_deb, app_files], check=False)
 
+    print(f"[*] Reading archive index for {os.path.basename(target_deb)}...", flush=True)
     try:
         cnt = subprocess.run(["dpkg-deb", "--contents", target_deb], capture_output=True, text=True)
         if cnt.returncode == 0:
@@ -312,7 +313,7 @@ def main():
     except OSError as e:
         sys.stderr.write(f"manifest write error: {e}\n")
 
-    print(f"[*] Unpacking {os.path.basename(target_deb)} into container environment...")
+    print(f"[*] Extracting {os.path.basename(target_deb)} into container environment...", flush=True)
     res = subprocess.run(["dpkg-deb", "-x", target_deb, app_files], check=False)
     if res.returncode != 0:
         subprocess.run(["dpkg", "-x", target_deb, app_files], check=False)

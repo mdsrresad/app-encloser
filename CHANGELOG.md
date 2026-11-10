@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.9] - 2026-11-10
+
+### Fixed & Enhanced
+- **Unbuffered Real-Time `tee` Streaming:** Overhauled the container `tee` shim (`src/app_encloser/data/shims/tee`) from full-stream buffering (`sys.stdin.buffer.read()`) to chunked real-time streaming with automatic pipe flushing. Long installations (such as APT updates and multi-hundred megabyte browser downloads) stream output line-by-line immediately without freezing the UI progress indicator.
+- **Granular Extraction Status:** `encloser-install` now announces package archive index reading and extraction phases (`[*] Reading archive index...`, `[*] Extracting ...`) with immediate `flush=True`, preventing apparent UI freezes during the extraction of large archives.
+- **Safe Closure Variable Binding:** Fixed variable capture in `window.py:run_task` by binding UI strings by value in `GLib.idle_add`, ensuring real-time status messages are displayed accurately without delay.
+
+---
+
 ## [1.0.8] - 2026-11-10
 
 ### Fixed & Enhanced

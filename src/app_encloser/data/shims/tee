@@ -30,24 +30,47 @@ for arg in sys.argv[1:]:
             except Exception:
                 target_files.append(os.path.join(etc_apt, fn))
 
-data = sys.stdin.buffer.read()
-sys.stdout.buffer.write(data)
-sys.stdout.buffer.flush()
-
 mode = "ab" if append_mode else "wb"
+open_handles = []
 for tf in target_files:
     try:
-        write_data = data
-        if tf.startswith(etc_apt):
-            try:
-                text_content = data.decode("utf-8", errors="ignore")
-                if "/usr/share/keyrings" in text_content or "/etc/apt/keyrings" in text_content:
-                    text_content = text_content.replace("/usr/share/keyrings/", keyrings_dir.rstrip("/") + "/")
-                    text_content = text_content.replace("/etc/apt/keyrings/", keyrings_dir.rstrip("/") + "/")
-                    write_data = text_content.encode("utf-8")
-            except Exception:
-                pass
-        with open(tf, mode) as f:
-            f.write(write_data)
+        open_handles.append((open(tf, mode), tf))
     except Exception as e:
         sys.stderr.write(f"tee: {tf}: {e}\n")
+
+buffered_for_repos = {}
+for h, tf in open_handles:
+    if tf.startswith(etc_apt):
+        buffered_for_repos[tf] = bytearray()
+
+while True:
+    chunk = sys.stdin.buffer.read(64)
+    if not chunk:
+        break
+    sys.stdout.buffer.write(chunk)
+    sys.stdout.buffer.flush()
+    for h, tf in open_handles:
+        if tf in buffered_for_repos:
+            buffered_for_repos[tf].extend(chunk)
+        else:
+            try:
+                h.write(chunk)
+                h.flush()
+            except Exception:
+                pass
+
+for h, tf in open_handles:
+    if tf in buffered_for_repos:
+        try:
+            content = buffered_for_repos[tf].decode("utf-8", errors="ignore")
+            if "/usr/share/keyrings" in content or "/etc/apt/keyrings" in content:
+                content = content.replace("/usr/share/keyrings/", keyrings_dir.rstrip("/") + "/")
+                content = content.replace("/etc/apt/keyrings/", keyrings_dir.rstrip("/") + "/")
+            h.write(content.encode("utf-8"))
+            h.flush()
+        except Exception:
+            pass
+    try:
+        h.close()
+    except Exception:
+        pass

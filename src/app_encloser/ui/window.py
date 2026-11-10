@@ -1188,9 +1188,9 @@ class AppEncloserWindow(Adw.ApplicationWindow):
                 if len(disp_text) > 85:
                     disp_text = disp_text[:82] + "..."
                 safe_m = GLib.markup_escape_text(disp_text)
-                GLib.idle_add(lambda: (
-                    self.status_lbl.set_markup(f"<b>{safe_m}</b>"),
-                    self.status_lbl.set_tooltip_text(clean_m)
+                GLib.idle_add(lambda sm=safe_m, cm=clean_m: (
+                    self.status_lbl.set_markup(f"<b>{sm}</b>"),
+                    self.status_lbl.set_tooltip_text(cm)
                 ))
             try:
                 res = fn(cb)
