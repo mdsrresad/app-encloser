@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import shlex
 import shutil
 import threading
@@ -1070,7 +1071,11 @@ class AppEncloserWindow(Adw.ApplicationWindow):
         dlg.present()
 
     def on_repair_all(self):
-        self.run_task("Repairing desktop launchers...", lambda cb: (repair_all_apps(), "Repaired all applications"))
+        def do_repair(cb):
+            repaired = repair_all_apps()
+            count = len(repaired) if isinstance(repaired, list) else 0
+            return True, f"Repaired {count} application launcher(s)."
+        self.run_task("Repairing desktop launchers...", do_repair)
 
     def on_import_clicked(self):
         self._active_file_chooser = Gtk.FileChooserNative(

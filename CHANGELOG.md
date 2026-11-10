@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.0.7] - 2026-11-10
+
+### Fixed & Enhanced
+- **Live Real-Time Streaming & Granular Progress:** Enabled real-time stdout streaming (`ENCLOSER_STREAM_LOG=1` and chunked unbuffered reader) in container execution wrappers. The UI now updates with live package resolution, download progress (bytes, percentages, rates), and unpacking statuses instead of remaining static.
+- **Progress Bar Synchronization:** Real-time percentage parsing dynamically drives the GTK4 progress bar from 0% to 100% during APT downloads.
+- **Missing `re` Import Fixed:** Added missing `import re` at the top of `src/app_encloser/ui/window.py`, preventing `NameError: name 're' is not defined` when processing progress updates.
+- **Repair All Launchers Success Handling:** Fixed `on_repair_all` in `window.py` to correctly evaluate the result list as successful (`(True, f"Repaired {count} application launcher(s)")`), eliminating spurious "Operation Failed" dialogs.
+- **Smart App Name Inference:** Encloser URL parsing now extracts application names from download domains (e.g., `dl.brave.com` -> `Brave`), preventing script-based container installers (`curl ... | sh`) from creating containers named `Curl`.
+- **Protected `launch.sh` Integrity:** Removed in-place file overwrites during active container script runs in `encloser-install`, avoiding bash offset syntax errors (`unexpected EOF while looking for matching '"'`).
+
+---
+
 ## [1.0.6] - 2026-11-10
 
 ### Security & Hardening (Zero-Trust Audit Hardening)
