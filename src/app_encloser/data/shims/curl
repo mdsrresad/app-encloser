@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import shutil
+
+app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app_files = os.path.join(app_dir, "app_files")
+keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
+etc_apt = os.path.join(app_dir, "userdata", "etc_apt", "sources.list.d")
+os.makedirs(keyrings_dir, exist_ok=True)
+os.makedirs(etc_apt, exist_ok=True)
+
+real_curl = "/usr/bin/curl"
+if not os.path.isfile(real_curl):
+    for c in ("/bin/curl", "/usr/local/bin/curl"):
+        if os.path.isfile(c):
+            real_curl = c
+            break
+
+child_env = os.environ.copy()
+cur_shims = os.path.dirname(os.path.abspath(__file__))
+p_parts = [p for p in child_env.get("PATH", "").split(":") if p and p != cur_shims]
+child_env["PATH"] = ":".join(p_parts)
+
+args = sys.argv[1:]
+new_args = []
+downloaded_files = []
+
+i = 0
+while i < len(args):
+    arg = args[i]
+    if arg in ("-o", "--output") and i + 1 < len(args):
+        val = args[i + 1]
+        fn = os.path.basename(val)
+        if "/usr/share/keyrings" in val or "/etc/apt/keyrings" in val:
+            target_path = os.path.join(keyrings_dir, fn)
+            new_args.extend([arg, target_path])
+            downloaded_files.append(("keyring", target_path))
+            i += 2
+            continue
+        elif "/etc/apt/sources.list.d" in val:
+            target_path = os.path.join(etc_apt, fn)
+            new_args.extend([arg, target_path])
+            downloaded_files.append(("repo", target_path))
+            i += 2
+            continue
+    elif arg.startswith("--output="):
+        val = arg.split("=", 1)[1]
+        fn = os.path.basename(val)
+        if "/usr/share/keyrings" in val or "/etc/apt/keyrings" in val:
+            target_path = os.path.join(keyrings_dir, fn)
+            new_args.append(f"--output={target_path}")
+            downloaded_files.append(("keyring", target_path))
+            i += 1
+            continue
+        elif "/etc/apt/sources.list.d" in val:
+            target_path = os.path.join(etc_apt, fn)
+            new_args.append(f"--output={target_path}")
+            downloaded_files.append(("repo", target_path))
+            i += 1
+            continue
+    elif arg.startswith("-") and not arg.startswith("--") and arg.endswith("o") and i + 1 < len(args):
+        val = args[i + 1]
+        fn = os.path.basename(val)
+        if "/usr/share/keyrings" in val or "/etc/apt/keyrings" in val:
+            target_path = os.path.join(keyrings_dir, fn)
+            new_args.extend([arg, target_path])
+            downloaded_files.append(("keyring", target_path))
+            i += 2
+            continue
+        elif "/etc/apt/sources.list.d" in val:
+            target_path = os.path.join(etc_apt, fn)
+            new_args.extend([arg, target_path])
+            downloaded_files.append(("repo", target_path))
+            i += 2
+            continue
+    new_args.append(arg)
+    i += 1
+
+res = subprocess.run([real_curl] + new_args, env=child_env)
+
+for ftype, fpath in downloaded_files:
+    if ftype == "repo" and os.path.isfile(fpath):
+        try:
+            with open(fpath, "r", encoding="utf-8", errors="ignore") as f:
+                content = f.read()
+            if "/usr/share/keyrings" in content or "/etc/apt/keyrings" in content:
+                content = content.replace("/usr/share/keyrings/", keyrings_dir.rstrip("/") + "/")
+                content = content.replace("/etc/apt/keyrings/", keyrings_dir.rstrip("/") + "/")
+                with open(fpath, "w", encoding="utf-8") as f:
+                    f.write(content)
+        except Exception:
+            pass
+
+sys.exit(res.returncode)

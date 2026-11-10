@@ -156,13 +156,17 @@ def main() -> int:
             return ret
         elif "update" in sub:
             update_cmd = ["apt-get", "update"]
-            if os.getuid() != 0 and shutil.which("sudo"):
+            if os.environ.get("APP_ENCLOSER_TEST_MODE") == "1":
+                update_cmd = ["echo", "mock_update"]
+            elif os.getuid() != 0 and shutil.which("sudo"):
                 update_cmd = ["sudo", "apt-get", "update"]
             res = subprocess.run(update_cmd)
             return res.returncode
         else:
             passthrough = ["apt-get"] + sub
-            if os.getuid() != 0 and shutil.which("sudo"):
+            if os.environ.get("APP_ENCLOSER_TEST_MODE") == "1":
+                passthrough = ["echo", "mock_passthrough"]
+            elif os.getuid() != 0 and shutil.which("sudo"):
                 passthrough = ["sudo", "apt-get"] + sub
             res = subprocess.run(passthrough)
             return res.returncode

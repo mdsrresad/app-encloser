@@ -95,6 +95,7 @@ def update_desktop_files_for_app(app_dir: str, folder_name: str, display_name: s
         f"Categories={cats}\n"
         f"StartupWMClass={wm_class}\n"
     )
+    os.makedirs(os.path.dirname(desk_file), exist_ok=True)
     with open(desk_file, "w", encoding="utf-8") as f:
         f.write(desk_content)
 

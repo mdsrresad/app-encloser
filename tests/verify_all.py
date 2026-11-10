@@ -7,8 +7,29 @@ import tarfile
 import subprocess
 import time
 
-os.environ["APP_ENCLOSER_CONFIG_DIR"] = "/tmp/app_encloser_test_config"
-os.environ["APP_ENCLOSER_CACHE_DIR"] = "/tmp/app_encloser_test_cache"
+import tempfile
+TEST_ISOLATED_ROOT = tempfile.mkdtemp(prefix="app_encloser_isolated_test_")
+TEST_APPS_DIR = os.path.join(TEST_ISOLATED_ROOT, "EnclosedApps")
+TEST_DESKTOP_DIR = os.path.join(TEST_ISOLATED_ROOT, "applications")
+TEST_CONFIG_DIR = os.path.join(TEST_ISOLATED_ROOT, "config")
+TEST_CACHE_DIR = os.path.join(TEST_ISOLATED_ROOT, "cache")
+TEST_BIN_DIR = os.path.join(TEST_ISOLATED_ROOT, "bin")
+TEST_ICONS_DIR = os.path.join(TEST_ISOLATED_ROOT, "icons")
+
+os.makedirs(TEST_APPS_DIR, exist_ok=True)
+os.makedirs(TEST_DESKTOP_DIR, exist_ok=True)
+os.makedirs(TEST_CONFIG_DIR, exist_ok=True)
+os.makedirs(TEST_CACHE_DIR, exist_ok=True)
+os.makedirs(TEST_BIN_DIR, exist_ok=True)
+os.makedirs(TEST_ICONS_DIR, exist_ok=True)
+
+os.environ["APP_ENCLOSER_DIR"] = TEST_APPS_DIR
+os.environ["APP_ENCLOSER_APPS_DIR"] = TEST_DESKTOP_DIR
+os.environ["APP_ENCLOSER_CONFIG_DIR"] = TEST_CONFIG_DIR
+os.environ["APP_ENCLOSER_CACHE_DIR"] = TEST_CACHE_DIR
+os.environ["APP_ENCLOSER_BIN_DIR"] = TEST_BIN_DIR
+os.environ["APP_ENCLOSER_ICONS_DIR"] = TEST_ICONS_DIR
+os.environ["APP_ENCLOSER_TEST_MODE"] = "1"
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC_DIR = os.path.join(PROJECT_ROOT, "src")
@@ -39,8 +60,13 @@ FAILED = "✗ FAIL"
 def get_test_env():
     env = os.environ.copy()
     env["PYTHONPATH"] = SRC_DIR
-    env["APP_ENCLOSER_CONFIG_DIR"] = "/tmp/app_encloser_test_config"
-    env["APP_ENCLOSER_CACHE_DIR"] = "/tmp/app_encloser_test_cache"
+    env["APP_ENCLOSER_DIR"] = TEST_APPS_DIR
+    env["APP_ENCLOSER_APPS_DIR"] = TEST_DESKTOP_DIR
+    env["APP_ENCLOSER_CONFIG_DIR"] = TEST_CONFIG_DIR
+    env["APP_ENCLOSER_CACHE_DIR"] = TEST_CACHE_DIR
+    env["APP_ENCLOSER_BIN_DIR"] = TEST_BIN_DIR
+    env["APP_ENCLOSER_ICONS_DIR"] = TEST_ICONS_DIR
+    env["APP_ENCLOSER_TEST_MODE"] = "1"
     return env
 
 
@@ -148,31 +174,41 @@ def test_single_canonical_desktop_launcher():
 
 
 def test_self_uninstall_logic():
-    unrelated_link = os.path.join(backend.APPS_DIR, "unrelated_external_app.desktop")
-    enclosed_link = os.path.join(backend.APPS_DIR, "enclosed_dummy_app.desktop")
-    if os.path.lexists(unrelated_link):
-        os.remove(unrelated_link)
-    if os.path.lexists(enclosed_link):
-        os.remove(enclosed_link)
+    import importlib
+    import unittest.mock
+    su_mod = importlib.import_module("app_encloser.core.self_uninstall")
 
+    mock_home = tempfile.mkdtemp(prefix="app_encloser_self_uninstall_")
+    mock_apps = os.path.join(mock_home, "applications")
+    mock_enc = os.path.join(mock_home, "EnclosedApps")
+    mock_bin = os.path.join(mock_home, "bin")
+    os.makedirs(mock_apps, exist_ok=True)
+    os.makedirs(mock_enc, exist_ok=True)
+    os.makedirs(mock_bin, exist_ok=True)
+
+    unrelated_link = os.path.join(mock_apps, "unrelated_external_app.desktop")
+    enclosed_link = os.path.join(mock_apps, "enclosed_dummy_app.desktop")
     os.symlink("/opt/nonexistent_system_app/broken.desktop", unrelated_link)
-    os.symlink(os.path.join(backend.ENCLOSED_DIR, "MockApp", "app.desktop"), enclosed_link)
+    os.symlink(os.path.join(mock_enc, "MockApp", "app.desktop"), enclosed_link)
 
-    from app_encloser.core.self_uninstall import self_uninstall
-    for fn in os.listdir(backend.APPS_DIR):
-        if fn == "enclosed_dummy_app.desktop":
-            fp = os.path.join(backend.APPS_DIR, fn)
-            if os.path.islink(fp):
-                raw_link = os.readlink(fp)
-                if "/EnclosedApps/" in raw_link:
-                    os.remove(fp)
+    with unittest.mock.patch("app_encloser.core.self_uninstall.REAL_HOME", mock_home), \
+         unittest.mock.patch("app_encloser.core.self_uninstall.LOCAL_BIN", mock_bin), \
+         unittest.mock.patch("app_encloser.core.self_uninstall.APPS_DIR", mock_apps), \
+         unittest.mock.patch("app_encloser.core.self_uninstall.ENCLOSED_DIR", mock_enc):
+        ok, msg = su_mod.self_uninstall(purge_apps=True)
+        assert ok is True
 
     assert os.path.islink(unrelated_link), "Self-uninstall must not remove unrelated broken symlinks"
-    assert not os.path.exists(enclosed_link), "Enclosed symlink should be removed"
-    os.remove(unrelated_link)
+    assert not os.path.exists(enclosed_link), "Enclosed symlink should be removed by self_uninstall"
 
-    dummy_usercustomize = os.path.join(backend.REAL_HOME, ".local", "lib", "python3.12", "site-packages", "usercustomize.py")
-    assert not os.path.exists(dummy_usercustomize) or os.path.isfile(dummy_usercustomize)
+    fresh_desktop_dir = os.path.join(mock_home, "fresh_desk_dir", "apps")
+    mock_app_dir = os.path.join(mock_home, "TestApp")
+    os.makedirs(mock_app_dir, exist_ok=True)
+    with unittest.mock.patch("app_encloser.core.desktop.APPS_DIR", fresh_desktop_dir):
+        backend.update_desktop_files_for_app(mock_app_dir, "TestApp", "Test App", "Categories=Utility;\n", "testapp")
+    assert os.path.isdir(fresh_desktop_dir), "B6: update_desktop_files_for_app must create missing APPS_DIR"
+
+    shutil.rmtree(mock_home, ignore_errors=True)
 
     print_test("4. Self-Uninstall Engine & Safety Verification", True,
                f"Verified self-uninstall target definitions, usercustomize protection, and package cleanup.")
@@ -191,6 +227,7 @@ def test_settings_and_scope():
 
 
 def test_mcp_server_protocol():
+    backend.update_setting("mcp_enabled", True)
     proc = subprocess.Popen(
         [sys.executable, os.path.join(SRC_DIR, "app_encloser", "main.py"), "--mcp"],
         stdin=subprocess.PIPE,
@@ -231,6 +268,20 @@ def test_mcp_server_protocol():
             assert t_name in tool_names, f"Tool '{t_name}' missing from MCP server"
         assert len(tools) == 16, f"Expected exactly 16 MCP tools, got {len(tools)}"
 
+        cmd_call_req = {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "run_container_cmd",
+                "arguments": {"app_name": "NonexistentApp", "command": ["echo", "test"]}
+            }
+        }
+        proc.stdin.write(json.dumps(cmd_call_req) + "\n")
+        proc.stdin.flush()
+        cmd_call_res = json.loads(proc.stdout.readline())
+        assert "error" not in cmd_call_res or "name 'os' is not defined" not in str(cmd_call_res), "B3 NameError: os in run_container_cmd"
+
     finally:
         proc.terminate()
         try:
@@ -259,7 +310,7 @@ def test_mcp_server_protocol():
             disabled_proc.wait(timeout=2)
         except Exception:
             disabled_proc.kill()
-        backend.update_setting("mcp_enabled", True)
+        backend.update_setting("mcp_enabled", False)
 
     print_test("6. MCP Server Protocol (JSON-RPC 2.0 initialize, Tool Registry & Toggle)", True,
                f"Server: app-encloser-mcp v{__version__} | Registered tools: {len(tools)} | Kill & Inspect verified.")
@@ -294,6 +345,13 @@ def test_cli_proxy_and_commands():
     )
     assert uninst_proc.returncode == 0, f"CLI uninstall failed: {uninst_proc.stderr}"
     assert "Successfully uninstalled" in uninst_proc.stdout
+
+    b2_proc = subprocess.run(
+        [sys.executable, os.path.join(SRC_DIR, "app_encloser", "main.py"), "apt-get", "update"],
+        capture_output=True, text=True,
+        env=get_test_env()
+    )
+    assert "NameError" not in b2_proc.stderr, f"B2 NameError: shutil in apt-get update: {b2_proc.stderr}"
 
     print_test("7. CLI Interface & Self-Uninstall Flag Support", True,
                "Verified CLI --help, --version, uninstall, kill, inspect, and proxy invocation.")
@@ -334,6 +392,21 @@ def test_kill_and_container_inspection():
         test_proc.wait(timeout=1)
     except Exception:
         test_proc.kill()
+
+    dummy_log_tail = subprocess.Popen(
+        ["tail", "-f", "/dev/null"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+    try:
+        pids = backend.get_running_app_pids(folder, fast_check=False)
+        assert dummy_log_tail.pid not in pids, f"Fuzzy kill error: unrelated tail process {dummy_log_tail.pid} was matched"
+    finally:
+        dummy_log_tail.terminate()
+        try:
+            dummy_log_tail.wait(timeout=1)
+        except Exception:
+            dummy_log_tail.kill()
 
     backend.uninstall_enclosed_app(folder)
     print_test("8. Force Stop / Kill & Container Inspection Engine", True,
@@ -468,6 +541,13 @@ def test_deb_package_build():
     assert not os.path.exists("/tmp/etc/pwned.txt") and not os.path.exists("/etc/pwned.txt"), "Zip Slip wrote outside destination!"
     os.remove(traversal_zip)
     shutil.rmtree(traversal_zip_dir, ignore_errors=True)
+
+    from app_encloser.core.extractor import extract_rpm
+    rpm_dest = "/tmp/test_rpm_dest"
+    os.makedirs(rpm_dest, exist_ok=True)
+    assert extract_rpm("/nonexistent/fake.rpm", rpm_dest) is False, "extract_rpm should fail on missing archive"
+    assert extract_rpm("/dev/null", rpm_dest) is False, "extract_rpm should fail on empty/corrupt archive"
+    shutil.rmtree(rpm_dest, ignore_errors=True)
 
     print_test(f"11. Debian Package Build & Binary Verification (v{__version__})", True,
                f"Package: app-encloser_{__version__}_all.deb ({deb_sz} bytes) | Executable verified.")
@@ -797,6 +877,11 @@ def test_host_terminal_discovery_and_uninstall():
     brew_cmd = get_purge_command_str({"type": "homebrew", "target": "test-pkg"})
     assert "brew uninstall --zap" in brew_cmd
 
+    try:
+        uninstall_host_package({"type": "pip_user", "target": "nonexistent_pkg_b1_test"})
+    except NameError as ne:
+        assert False, f"B1 NameError in uninstall_host_package: {ne}"
+
     print_test("17. Host Terminal Package Discovery & Multi-Source Purge", True,
                "Discovered terminal-installed tools and verified clean host purging engine.")
 
@@ -889,17 +974,15 @@ def test_deep_icon_extraction_and_monogram_upgrade():
 
 
 def test_embedded_encloser_install_compilation():
-    with open(os.path.join(SRC_DIR, "app_encloser", "core", "lifecycle.py"), "r", encoding="utf-8") as f:
-        content = f.read()
-    import re
-    match = re.search(r'helper_code = \"\"\"(.*?)\"\"\"', content, re.DOTALL)
-    assert match is not None, "Could not locate helper_code in lifecycle.py"
-    code = match.group(1)
+    shim_path = os.path.join(SRC_DIR, "app_encloser", "data", "shims", "encloser-install")
+    assert os.path.isfile(shim_path), f"Shim not found: {shim_path}"
+    with open(shim_path, "r", encoding="utf-8") as f:
+        code = f.read()
     compiled = compile(code, "encloser-install", "exec")
     assert compiled is not None
 
-    print_test("21. Embedded encloser-install Syntax & Indentation Integrity", True,
-               "Verified Python bytecode compilation of embedded container helper scripts.")
+    print_test("21. Packaged encloser-install Syntax & Indentation Integrity", True,
+               "Verified Python bytecode compilation of packaged container helper scripts.")
 
 
 def test_multiline_repo_script_inference_and_rootless_shims():
@@ -1215,6 +1298,7 @@ def test_terminal_install_interceptor_and_ai_guard():
     assert sub_res.returncode == 2, f"Expected returncode 2 for AI intercept, got {sub_res.returncode}"
     assert "AI Agent / Automated Terminal Tool Install Detected" in sub_res.stderr
     assert "app-encloser install \"sudo apt install curl\" --mode=strict" in sub_res.stderr
+    assert "APP_ENCLOSER_BYPASS=1" not in sub_res.stderr, "AI agent block message must not contain bypass recipe"
 
     import tempfile
     import unittest.mock
@@ -1383,7 +1467,7 @@ def cleanup_test_artifacts():
                     os.remove(desk)
                 except Exception:
                     pass
-    for tmp_d in ("/tmp/app_encloser_test_config", "/tmp/app_encloser_test_cache"):
+    for tmp_d in ("/tmp/app_encloser_test_config", "/tmp/app_encloser_test_cache", TEST_ISOLATED_ROOT):
         if os.path.isdir(tmp_d):
             shutil.rmtree(tmp_d, ignore_errors=True)
 

@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -e
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: encloser-python <version> [uv python install options...]"
+    echo "Example: encloser-python 3.11"
+    echo "Example: encloser-python 3.13"
+    exit 1
+fi
+
+TARGET_VER="$1"
+app_dir="$(dirname "$(dirname "$(dirname "$(readlink -f "${0}")")")")"
+HERE="$app_dir"
+
+export UV_CACHE_DIR="$HERE/userdata/cache/uv"
+export UV_PYTHON_INSTALL_DIR="$HERE/userdata/local_share/uv/python"
+export UV_TOOL_DIR="$HERE/userdata/local_share/uv/tools"
+export UV_TOOL_BIN_DIR="$HERE/userdata/bin"
+export PIP_CACHE_DIR="$HERE/userdata/cache/pip"
+export PYTHONUSERBASE="$HERE/userdata/home/.local"
+export PATH="$HERE/userdata/bin:$HERE/userdata/home/.local/bin:$HERE/userdata/local_share/uv/python:$PATH"
+
+if ! command -v uv >/dev/null 2>&1; then
+    echo "Error: 'uv' is required to manage isolated Python versions."
+    exit 1
+fi
+
+echo "[*] Installing Python $TARGET_VER via uv..."
+uv python install "$@"
+echo "[*] Creating isolated virtualenv at $HERE/userdata/venv with Python $TARGET_VER..."
+uv venv --python "$1" "$HERE/userdata/venv"
+echo "[+] Isolated Python $TARGET_VER environment ready at $HERE/userdata/venv"
+echo "[+] Container launch.sh will automatically activate this environment."

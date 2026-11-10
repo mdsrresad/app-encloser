@@ -137,7 +137,9 @@ def self_uninstall(purge_apps: bool = True) -> Tuple[bool, str]:
     if is_dpkg_pkg:
         has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
         purged = False
-        if shutil.which("pkexec") and has_display:
+        if os.environ.get("APP_ENCLOSER_TEST_MODE") == "1":
+            purged = False
+        elif shutil.which("pkexec") and has_display:
             try:
                 res = subprocess.run(["pkexec", "dpkg", "--purge", "app-encloser"], capture_output=True)
                 purged = (res.returncode == 0)

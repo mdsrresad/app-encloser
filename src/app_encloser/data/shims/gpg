@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+
+app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app_files = os.path.join(app_dir, "app_files")
+keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
+os.makedirs(keyrings_dir, exist_ok=True)
+
+new_args = []
+i = 1
+out_file = None
+while i < len(sys.argv):
+    arg = sys.argv[i]
+    if arg in ("--output", "-o") and i + 1 < len(sys.argv):
+        target = sys.argv[i + 1]
+        fn = os.path.basename(target)
+        out_file = os.path.join(keyrings_dir, fn)
+        new_args.extend([arg, out_file])
+        i += 2
+    elif arg.startswith("--output="):
+        target = arg.split("=", 1)[1]
+        fn = os.path.basename(target)
+        out_file = os.path.join(keyrings_dir, fn)
+        new_args.append(f"--output={out_file}")
+        i += 1
+    else:
+        new_args.append(arg)
+        i += 1
+
+stdin_data = None
+if not sys.stdin.isatty():
+    stdin_data = sys.stdin.buffer.read()
+
+real_gpg = "/usr/bin/gpg"
+if not os.path.isfile(real_gpg):
+    real_gpg = "/bin/gpg"
+
+child_env = os.environ.copy()
+cur_shims = os.path.dirname(os.path.abspath(__file__))
+p_parts = [p for p in child_env.get("PATH", "").split(":") if p and p != cur_shims]
+child_env["PATH"] = ":".join(p_parts)
+
+if os.path.isfile(real_gpg):
+    p = subprocess.Popen([real_gpg] + new_args, stdin=subprocess.PIPE if stdin_data is not None else None, env=child_env)
+    p.communicate(input=stdin_data)
+    sys.exit(p.returncode)
+sys.exit(1)

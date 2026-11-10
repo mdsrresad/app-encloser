@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+app_dir="$(dirname "$(dirname "$(dirname "$(readlink -f "${0}")")")")"
+brew_home="$app_dir/userdata/linuxbrew"
+export HOMEBREW_PREFIX="$brew_home"
+export HOMEBREW_CELLAR="$brew_home/Cellar"
+export HOMEBREW_REPOSITORY="$brew_home/Homebrew"
+export PATH="$brew_home/bin:$brew_home/sbin:$PATH"
+export HOMEBREW_CACHE="$app_dir/userdata/cache/homebrew"
+export HOMEBREW_LOGS="$app_dir/userdata/logs/homebrew"
+export HOMEBREW_TEMP="$app_dir/userdata/tmp"
+if [[ ! -x "$brew_home/bin/brew" ]]; then
+    echo "[*] Initializing isolated container Homebrew in $brew_home..."
+    mkdir -p "$brew_home/bin" "$brew_home/Cellar" "$brew_home/etc" "$brew_home/var"
+    if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]]; then
+        echo "[*] Linking base Homebrew binaries from host system..."
+        ln -sf /home/linuxbrew/.linuxbrew/bin/* "$brew_home/bin/" 2>/dev/null || true
+    else
+        echo "[*] Cloning Homebrew core into container universe..."
+        git clone --depth=1 https://github.com/Homebrew/brew "$brew_home/Homebrew" 2>/dev/null || true
+        ln -sf "$brew_home/Homebrew/bin/brew" "$brew_home/bin/brew" 2>/dev/null || true
+    fi
+fi
+if [[ ! -x "$brew_home/bin/brew" ]]; then
+    echo "Error: Homebrew binary could not be found or initialized."
+    exit 1
+fi
+exec "$brew_home/bin/brew" "$@"

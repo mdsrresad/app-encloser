@@ -7,9 +7,9 @@ from typing import Optional, Dict, Any
 
 REAL_HOME = os.path.realpath(os.path.expanduser("~"))
 ENCLOSED_DIR = os.environ.get("APP_ENCLOSER_DIR") or os.path.join(REAL_HOME, "EnclosedApps")
-APPS_DIR = os.path.join(REAL_HOME, ".local", "share", "applications")
-ICONS_DIR = os.path.join(REAL_HOME, ".local", "share", "icons", "hicolor")
-LOCAL_BIN = os.path.join(REAL_HOME, ".local", "bin")
+APPS_DIR = os.environ.get("APP_ENCLOSER_APPS_DIR") or os.path.join(REAL_HOME, ".local", "share", "applications")
+ICONS_DIR = os.environ.get("APP_ENCLOSER_ICONS_DIR") or os.path.join(REAL_HOME, ".local", "share", "icons", "hicolor")
+LOCAL_BIN = os.environ.get("APP_ENCLOSER_BIN_DIR") or os.path.join(REAL_HOME, ".local", "bin")
 CONFIG_DIR = os.environ.get("APP_ENCLOSER_CONFIG_DIR") or os.path.join(REAL_HOME, ".config", "app-encloser")
 CACHE_DIR = os.environ.get("APP_ENCLOSER_CACHE_DIR") or os.path.join(REAL_HOME, ".cache", "app-encloser")
 SETTINGS_FILE = os.path.join(CONFIG_DIR, "settings.json")
@@ -27,7 +27,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "button_style": "icons_only",
     "non_grabbing_menus": True,
     "strict_sandbox_by_default": True,
-    "terminal_guard_enabled": False
+    "terminal_guard_enabled": False,
+    "mcp_enabled": False
 }
 
 _DIR_SIZE_CACHE: Dict[str, tuple] = {}

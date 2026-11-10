@@ -59,6 +59,8 @@ def extract_deb(deb_path: str, target_dir: str) -> bool:
 
 
 def extract_rpm(rpm_path: str, target_dir: str) -> bool:
+    import tempfile
+    staging_dir = ""
     try:
         abs_target = os.path.realpath(target_dir)
         os.makedirs(abs_target, exist_ok=True)
@@ -77,12 +79,33 @@ def extract_rpm(rpm_path: str, target_dir: str) -> bool:
             dest_path = os.path.realpath(os.path.join(abs_target, entry))
             if dest_path != abs_target and not dest_path.startswith(abs_target + os.sep):
                 return False
+        staging_dir = tempfile.mkdtemp(prefix="rpm_stage_")
         p1 = subprocess.Popen(["rpm2cpio", rpm_path], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p2 = subprocess.Popen(["cpio", "--no-absolute-filenames", "-idmv"], stdin=p1.stdout, cwd=abs_target, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        p2 = subprocess.Popen(["cpio", "--no-absolute-filenames", "-idmv"], stdin=p1.stdout, cwd=staging_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         p1.stdout.close()
         p2.communicate()
-        return p2.returncode == 0
+        if p2.returncode != 0:
+            shutil.rmtree(staging_dir, ignore_errors=True)
+            return False
+        for root, dirs, files in os.walk(staging_dir):
+            for d in dirs:
+                src_d = os.path.join(root, d)
+                rel = os.path.relpath(src_d, staging_dir)
+                dst_d = os.path.join(abs_target, rel)
+                os.makedirs(dst_d, exist_ok=True)
+            for f in files:
+                src_f = os.path.join(root, f)
+                rel = os.path.relpath(src_f, staging_dir)
+                dst_f = os.path.join(abs_target, rel)
+                os.makedirs(os.path.dirname(dst_f), exist_ok=True)
+                if os.path.lexists(dst_f):
+                    os.remove(dst_f)
+                shutil.move(src_f, dst_f)
+        shutil.rmtree(staging_dir, ignore_errors=True)
+        return True
     except Exception:
+        if staging_dir and os.path.exists(staging_dir):
+            shutil.rmtree(staging_dir, ignore_errors=True)
         return False
 
 

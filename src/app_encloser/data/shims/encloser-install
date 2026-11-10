@@ -1,0 +1,399 @@
+#!/usr/bin/env python3
+import os
+import sys
+import re
+import json
+import shutil
+import subprocess
+import urllib.request
+
+def download_deb(url: str, dest_path: str) -> bool:
+    if shutil.which("curl"):
+        res = subprocess.run(["curl", "-sSL", "--fail", "-o", dest_path, url])
+        if res.returncode == 0 and os.path.isfile(dest_path) and os.path.getsize(dest_path) > 0:
+            return True
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64)"})
+        with urllib.request.urlopen(req, timeout=30) as resp, open(dest_path, "wb") as out_f:
+            shutil.copyfileobj(resp, out_f)
+        return True
+    except Exception as e:
+        sys.stderr.write(f"download error: {e}\n")
+        return False
+
+def fix_links(dest_dir: str):
+    usr_lib = os.path.join(dest_dir, "usr", "lib")
+    lib = os.path.join(dest_dir, "lib")
+    if os.path.isdir(usr_lib):
+        os.makedirs(lib, exist_ok=True)
+        for item in os.listdir(usr_lib):
+            t = os.path.join(lib, item)
+            s = os.path.join(usr_lib, item)
+            if not os.path.exists(t):
+                try:
+                    os.symlink(os.path.relpath(s, lib), t)
+                except OSError as e:
+                    sys.stderr.write(f"symlink error {t}: {e}\n")
+    usr_bin = os.path.join(dest_dir, "usr", "bin")
+    b_dir = os.path.join(dest_dir, "bin")
+    if os.path.isdir(b_dir) and os.path.isdir(usr_bin):
+        for item in os.listdir(b_dir):
+            t = os.path.join(usr_bin, item)
+            s = os.path.join(b_dir, item)
+            if not os.path.exists(t):
+                try:
+                    os.symlink(os.path.relpath(s, usr_bin), t)
+                except OSError as e:
+                    sys.stderr.write(f"symlink error {t}: {e}\n")
+            if os.path.isfile(t):
+                try:
+                    os.chmod(t, 0o755)
+                except OSError as e:
+                    sys.stderr.write(f"chmod error {t}: {e}\n")
+
+def is_safe_exec(p: str) -> bool:
+    if not p or not isinstance(p, str):
+        return False
+    bad_chars = (';', '&', '|', '`', '$', '(', ')', '<', '>', '\n', '\r', '\\', '"')
+    if any(c in p for c in bad_chars):
+        return False
+    clean = p.strip()
+    if clean.startswith("/") or clean.startswith("-") or ".." in clean.split("/"):
+        return False
+    return True
+
+def resolve_exec(app_f: str) -> str:
+    cand_dirs = [os.path.join(app_f, "usr", "bin"), os.path.join(app_f, "bin"), os.path.join(app_f, "usr", "games"), os.path.join(app_f, "opt")]
+    for cd in cand_dirs:
+        if os.path.isdir(cd):
+            for root, _, files in os.walk(cd):
+                for fn in sorted(files):
+                    fp = os.path.join(root, fn)
+                    if os.access(fp, os.X_OK) and not fn.endswith((".so", ".a", ".png", ".desktop", ".xml", ".svg")):
+                        rel = os.path.relpath(fp, app_f)
+                        if is_safe_exec(rel):
+                            return rel
+    return ""
+
+def get_missing_apt_dependencies(pkg: str) -> list:
+    cmd = [
+        "apt-cache", "depends", "--recurse",
+        "--no-recommends", "--no-suggests", "--no-conflicts",
+        "--no-breaks", "--no-replaces", "--no-enhances", pkg
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode != 0:
+        return []
+    deps = []
+    seen = set()
+    for line in res.stdout.splitlines():
+        line = line.strip()
+        if line.startswith(("Depends:", "PreDepends:")):
+            parts = line.split(":", 1)[1].strip().split()
+            if parts:
+                d = parts[0].strip("<>")
+                if ":" in d:
+                    d = d.split(":")[0]
+                if d and d not in seen and d != pkg:
+                    seen.add(d)
+                    deps.append(d)
+    missing = []
+    for d in deps:
+        q = subprocess.run(["dpkg-query", "-W", "-f=${Status}", d], capture_output=True, text=True)
+        if q.returncode != 0 or "install ok installed" not in q.stdout:
+            missing.append(d)
+    return missing
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: encloser-install <package_name|deb_file|url> OR encloser-install --remove <package_name>")
+        sys.exit(1)
+    target = sys.argv[1].strip()
+    app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    app_files = os.path.join(app_dir, "app_files")
+    folder_name = os.path.basename(app_dir)
+    dl_dir = os.path.join(app_dir, "userdata", "cache")
+    os.makedirs(dl_dir, exist_ok=True)
+    manifest_file = os.path.join(app_dir, "userdata", "installed_pkgs.json")
+    keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
+    os.makedirs(keyrings_dir, exist_ok=True)
+
+    prereqs = {"curl", "wget", "gpg", "gnupg", "ca-certificates", "apt-transport-https", "software-properties-common", "lsb-release"}
+    if target.lower() in prereqs:
+        check_cmd = ["dpkg-query", "-W", "-f=${Status}", target.lower()]
+        res = subprocess.run(check_cmd, capture_output=True, text=True)
+        if res.returncode == 0 and "install ok installed" in res.stdout:
+            print(f"[Container APT] Prerequisite '{target}' is already available on host OS. Skipping container override.")
+            sys.exit(0)
+        if shutil.which(target.lower()):
+            print(f"[Container APT] Prerequisite '{target}' is already available in PATH. Skipping container override.")
+            sys.exit(0)
+
+    if target in ("--remove", "remove", "--purge", "purge"):
+        if len(sys.argv) < 3:
+            print("Error: No package specified to remove.")
+            sys.exit(1)
+        pkg_to_remove = sys.argv[2].strip()
+        installed_data = {}
+        if os.path.isfile(manifest_file):
+            try:
+                with open(manifest_file, "r", encoding="utf-8") as f:
+                    installed_data = json.load(f)
+            except Exception as e:
+                sys.stderr.write(f"manifest load error: {e}\n")
+
+        matched_key = None
+        for k in installed_data:
+            if k.lower() == pkg_to_remove.lower():
+                matched_key = k
+                break
+
+        if matched_key:
+            rec = installed_data.pop(matched_key)
+            removed_count = 0
+            for rel_f in rec.get("files", []):
+                full_f = os.path.join(app_files, rel_f.lstrip("/"))
+                if os.path.isfile(full_f) or os.path.islink(full_f):
+                    try:
+                        os.remove(full_f)
+                        removed_count += 1
+                    except OSError as e:
+                        sys.stderr.write(f"remove error {full_f}: {e}\n")
+            try:
+                with open(manifest_file, "w", encoding="utf-8") as f:
+                    json.dump(installed_data, f, indent=2)
+            except OSError as e:
+                sys.stderr.write(f"manifest write error: {e}\n")
+            print(f"[Container APT] Removed container override for '{pkg_to_remove}' ({removed_count} files removed). Host OS version will be used if present.")
+            sys.exit(0)
+        else:
+            print(f"[Container APT] Package '{pkg_to_remove}' not found in container overlay.")
+            sys.exit(0)
+
+    target_deb = target
+    extra_debs = []
+
+    if target.startswith(("http://", "https://")):
+        print(f"[*] Downloading {target}...")
+        fn = os.path.basename(target.split("?")[0]) or "package.deb"
+        dl_path = os.path.join(dl_dir, fn)
+        if not download_deb(target, dl_path):
+            print(f"Error: Failed to download from {target}")
+            sys.exit(1)
+        target_deb = dl_path
+    elif not os.path.isfile(target):
+        pkg = target
+        etc_apt_dir = os.path.join(app_dir, "userdata", "etc_apt", "sources.list.d")
+        lists_dir = os.path.join(app_dir, "userdata", "var_lib_apt_lists")
+        cache_dir = os.path.join(app_dir, "userdata", "cache", "apt")
+        apt_cmd = [
+            "apt-get",
+            "-o", f"Dir::Etc::trustedparts={keyrings_dir}",
+        ]
+        if os.path.isdir(etc_apt_dir) and os.listdir(etc_apt_dir):
+            os.makedirs(os.path.join(lists_dir, "partial"), exist_ok=True)
+            os.makedirs(cache_dir, exist_ok=True)
+            apt_cmd.extend([
+                "-o", "Dir::Etc::sourcelist=/etc/apt/sources.list",
+                "-o", f"Dir::Etc::sourceparts={etc_apt_dir}",
+                "-o", f"Dir::State::lists={lists_dir}",
+                "-o", f"Dir::Cache={cache_dir}",
+                "-o", "Debug::NoLocking=1"
+            ])
+
+        print(f"[*] Resolving dependency closure for {pkg}...")
+        missing_deps = get_missing_apt_dependencies(pkg)
+        if missing_deps:
+            print(f"[*] Found {len(missing_deps)} missing host dependencies: {', '.join(missing_deps)}")
+            for dep in missing_deps:
+                dep_cmd = list(apt_cmd) + ["download", dep]
+                subprocess.run(dep_cmd, cwd=dl_dir, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        print(f"[*] Fetching {pkg} via APT...")
+        download_cmd = list(apt_cmd) + ["download", pkg]
+        res = subprocess.run(download_cmd, cwd=dl_dir)
+        if res.returncode != 0:
+            res = subprocess.run(["apt-get", "-o", f"Dir::Etc::trustedparts={keyrings_dir}", "download", pkg], cwd=dl_dir)
+        if res.returncode != 0:
+            print(f"Error: Could not download {pkg}")
+            sys.exit(1)
+        pkg_base = pkg.split("=")[0]
+        debs = [f for f in os.listdir(dl_dir) if f.endswith(".deb") and pkg_base in f]
+        if not debs:
+            debs = [f for f in os.listdir(dl_dir) if f.endswith(".deb")]
+        if not debs:
+            print("Error: No package archive retrieved.")
+            sys.exit(1)
+        debs.sort(key=lambda fn: os.path.getmtime(os.path.join(dl_dir, fn)), reverse=True)
+        target_deb = os.path.join(dl_dir, debs[0])
+
+        for f in os.listdir(dl_dir):
+            if f.endswith(".deb"):
+                full_p = os.path.join(dl_dir, f)
+                if full_p != target_deb and full_p not in extra_debs:
+                    extra_debs.append(full_p)
+
+    extracted_files = []
+    for dep_deb in extra_debs:
+        print(f"[*] Unpacking dependency {os.path.basename(dep_deb)} into container environment...")
+        try:
+            cnt = subprocess.run(["dpkg-deb", "--contents", dep_deb], capture_output=True, text=True)
+            if cnt.returncode == 0:
+                for line in cnt.stdout.splitlines():
+                    parts = line.split()
+                    if len(parts) >= 6:
+                        rel_p = parts[5].lstrip("./")
+                        if rel_p and not rel_p.endswith("/"):
+                            extracted_files.append(rel_p)
+        except OSError as e:
+            sys.stderr.write(f"dpkg-deb listing error: {e}\n")
+        res = subprocess.run(["dpkg-deb", "-x", dep_deb, app_files], check=False)
+        if res.returncode != 0:
+            subprocess.run(["dpkg", "-x", dep_deb, app_files], check=False)
+
+    try:
+        cnt = subprocess.run(["dpkg-deb", "--contents", target_deb], capture_output=True, text=True)
+        if cnt.returncode == 0:
+            for line in cnt.stdout.splitlines():
+                parts = line.split()
+                if len(parts) >= 6:
+                    rel_p = parts[5].lstrip("./")
+                    if rel_p and not rel_p.endswith("/"):
+                        extracted_files.append(rel_p)
+    except OSError as e:
+        sys.stderr.write(f"dpkg-deb target listing error: {e}\n")
+
+    pkg_key = target.split("=")[0] if not target.startswith(("http://", "https://")) and not os.path.isfile(target) else os.path.basename(target_deb).split("_")[0]
+    installed_data = {}
+    if os.path.isfile(manifest_file):
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                installed_data = json.load(f)
+        except Exception as e:
+            sys.stderr.write(f"manifest load error: {e}\n")
+
+    if pkg_key in installed_data and installed_data[pkg_key].get("files"):
+        for old_f in installed_data[pkg_key]["files"]:
+            full_old = os.path.join(app_files, old_f.lstrip("/"))
+            if os.path.isfile(full_old) or os.path.islink(full_old):
+                try:
+                    os.remove(full_old)
+                except OSError as e:
+                    sys.stderr.write(f"remove old file error {full_old}: {e}\n")
+
+    installed_data[pkg_key] = {
+        "deb": os.path.basename(target_deb),
+        "files": extracted_files
+    }
+    try:
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            json.dump(installed_data, f, indent=2)
+    except OSError as e:
+        sys.stderr.write(f"manifest write error: {e}\n")
+
+    print(f"[*] Unpacking {os.path.basename(target_deb)} into container environment...")
+    res = subprocess.run(["dpkg-deb", "-x", target_deb, app_files], check=False)
+    if res.returncode != 0:
+        subprocess.run(["dpkg", "-x", target_deb, app_files], check=False)
+
+    fix_links(app_files)
+
+    try:
+        with open(os.path.join(app_dir, ".pkg_format"), "w", encoding="utf-8") as f:
+            f.write("DEB")
+    except OSError as e:
+        sys.stderr.write(f"pkg_format write error: {e}\n")
+
+    apps_dir = os.path.join(app_files, "usr", "share", "applications")
+    found_desk = None
+    target_bin = None
+    display_name = folder_name
+    wm_class = folder_name
+    icon_source = None
+
+    if os.path.isdir(apps_dir):
+        desks = [f for f in os.listdir(apps_dir) if f.endswith(".desktop")]
+        for df in desks:
+            dp = os.path.join(apps_dir, df)
+            try:
+                with open(dp, "r", encoding="utf-8") as f:
+                    for line in f:
+                        if line.startswith("Name=") and (not display_name or display_name == folder_name):
+                            display_name = line.split("=", 1)[1].strip()
+                        elif line.startswith("Exec=") and not target_bin:
+                            raw = line.split("=", 1)[1].strip()
+                            clean = re.sub(r" %[a-zA-Z]", "", raw).split()[0].lstrip("/")
+                            if is_safe_exec(clean):
+                                target_bin = clean
+                        elif line.startswith("StartupWMClass="):
+                            wm_class = line.split("=", 1)[1].strip()
+                        elif line.startswith("Icon=") and not icon_source:
+                            icon_source = line.split("=", 1)[1].strip()
+                found_desk = dp
+                if target_bin:
+                    break
+            except Exception as e:
+                sys.stderr.write(f"desktop parse error {dp}: {e}\n")
+
+    if not target_bin:
+        target_bin = resolve_exec(app_files)
+
+    if target_bin and is_safe_exec(target_bin):
+        safe_bin = target_bin.replace("'", "'\\''")
+        try:
+            with open(os.path.join(app_dir, ".target_exec"), "w", encoding="utf-8") as f:
+                f.write(safe_bin)
+        except OSError as e:
+            sys.stderr.write(f"target_exec write error: {e}\n")
+        launch_sh = os.path.join(app_dir, "launch.sh")
+        if os.path.isfile(launch_sh):
+            try:
+                with open(launch_sh, "r", encoding="utf-8") as lf:
+                    lcontent = lf.read()
+                new_lcontent = re.sub(r"REL_EXEC='[^']*'", f"REL_EXEC='{safe_bin}'", lcontent)
+                new_lcontent = re.sub(r'TARGET_BIN="\$HERE/app_files/[^"]*"', f'TARGET_BIN="$HERE/app_files/{safe_bin}"', new_lcontent)
+                with open(launch_sh, "w", encoding="utf-8") as lf:
+                    lf.write(new_lcontent)
+            except OSError as e:
+                sys.stderr.write(f"launch_sh update error: {e}\n")
+
+    icon_copied = False
+    icon_targets = []
+    if icon_source:
+        icon_targets.append(icon_source.lower())
+    icon_targets.append(folder_name.lower())
+    if found_desk:
+        d_stem = os.path.splitext(os.path.basename(found_desk))[0].lower()
+        if d_stem not in icon_targets:
+            icon_targets.append(d_stem)
+
+    for cand_name in icon_targets:
+        for root, _, files in os.walk(app_files):
+            for file in files:
+                if cand_name in file.lower() and file.endswith((".png", ".svg")):
+                    dest_icon = os.path.join(app_dir, "icon.png" if file.endswith(".png") else "icon.svg")
+                    try:
+                        shutil.copyfile(os.path.join(root, file), dest_icon)
+                        icon_copied = True
+                        break
+                    except OSError as e:
+                        sys.stderr.write(f"icon copy error: {e}\n")
+            if icon_copied:
+                break
+        if icon_copied:
+            break
+
+    desk_file = os.path.join(app_dir, f"{folder_name}.desktop")
+    launch_sh = os.path.join(app_dir, "launch.sh")
+    resolved_icon = os.path.join(app_dir, "icon.png" if os.path.isfile(os.path.join(app_dir, "icon.png")) else "icon.svg")
+    try:
+        with open(desk_file, "w", encoding="utf-8") as f:
+            f.write(f"[Desktop Entry]\nVersion=1.0\nType=Application\nName={display_name}\nExec={launch_sh} %f\nIcon={resolved_icon}\nStartupWMClass={wm_class}\nCategories=Utility;\nTerminal=false\n")
+    except OSError as e:
+        sys.stderr.write(f"desktop file write error: {e}\n")
+
+    print(f"[+] Successfully installed {display_name} into container environment!")
+    print(f"[+] Isolated binary target: {target_bin}")
+
+if __name__ == "__main__":
+    main()

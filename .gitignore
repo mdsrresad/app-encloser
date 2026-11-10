@@ -24,4 +24,5 @@ Thumbs.db
 .cache/
 .pytest_cache/
 *.tar.gz
+SHA256SUMS.txt
 social_preview.png

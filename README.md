@@ -106,7 +106,7 @@ App Encloser provides three configurable isolation profiles per application:
    - Binds the container's directory read-write, strictly preventing modifications outside `~/EnclosedApps/<AppName>/`.
    - *Security boundary note:* Strict Sandbox enforces kernel filesystem write protection and masks `$HOME` with tmpfs. Note that network access is enabled by default (toggleable via `--no-net`). For Chromium and Electron-based applications, unprivileged nested user namespaces are restricted by the kernel, so App Encloser sets `ELECTRON_DISABLE_SANDBOX=1` and passes `--no-sandbox` to the target executable, trading internal Chromium renderer sandboxing for external Bubblewrap container containment (`--ro-bind / /`, `--unshare-pid`, etc.). Sockets for display (Wayland/X11), audio (PulseAudio/PipeWire), and D-Bus are bound read-write for desktop GUI functionality; on X11, clients lack per-window input isolation (Wayland is recommended). Requires unprivileged user namespaces enabled on the host.
 3. **System Integrated:**
-   - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management.
+   - For system utilities or tools requiring direct host visibility while maintaining centralized container binary management. Runs without filesystem virtualization and directly shares host `$HOME` and user environment.
 
 #### Modular Security Toggles (Per-Container):
 Fine-tune the strict sandbox attack surface for each container individually via the CLI or UI:
@@ -139,7 +139,7 @@ Every enclosed container acts as its own self-contained environment:
 
 When enabled (opt-in via Settings or `app-encloser guard enable`), App Encloser configures an interceptor script (`~/.config/app-encloser/shell_guard.sh`):
 
-- **Interactive Terminal Protection:** When running `sudo apt install`, `pip install`, `npm install -g`, or `cargo install` in interactive bash/zsh sessions, the terminal presents an interactive menu offering to enclose the application cleanly into `~/EnclosedApps/` instead of polluting the host OS.
+- **Interactive Terminal Protection:** Intercepts package manager install commands (`apt`, `apt-get`, `pip`, `pip3`, `npm`, `uv`, `cargo`, `brew`) in interactive bash/zsh sessions, presenting an interactive menu offering to enclose the application cleanly into `~/EnclosedApps/` instead of polluting the host OS. Note: `shell_guard.sh` intercepts package manager commands, not arbitrary piped shell scripts (`curl | bash`).
 - **Autonomous AI Agent Interceptor:** Non-interactive environments and AI agent processes (Claude Code, Cursor, Aider, Copilot CLI, etc.) with active detection environment variables are intercepted with **Exit Code 2** and a structured instruction message directing the agent to use `app-encloser install <pkg>`.
 
 ---

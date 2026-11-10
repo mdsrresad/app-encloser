@@ -483,7 +483,7 @@ def write_launch_script(app_dir: str, rel_exec: str, pkg_format: str):
         '        cleanup_pid',
         '        exit 126',
         '    fi',
-        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /home --dir "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
+        '    BWRAP_CMD=(bwrap --die-with-parent --new-session --unshare-pid --unshare-ipc --unshare-uts --unshare-cgroup-try --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /home --tmpfs "$HOST_USER_HOME" --bind "$HERE" "$HERE" --setenv HERE "$HERE" --setenv HOME "$HOME" --setenv PATH "$PATH" --setenv LD_LIBRARY_PATH "${LD_LIBRARY_PATH:-}" --setenv XDG_CONFIG_HOME "$XDG_CONFIG_HOME" --setenv XDG_CACHE_HOME "$XDG_CACHE_HOME" --setenv XDG_DATA_HOME "$XDG_DATA_HOME" --setenv XDG_STATE_HOME "$XDG_STATE_HOME" --setenv TMPDIR "$TMPDIR" --setenv STATE_DIRECTORY "$STATE_DIRECTORY" --setenv RUNTIME_DIRECTORY "$RUNTIME_DIRECTORY" --setenv LOGS_DIRECTORY "$LOGS_DIRECTORY")',
         '    if [[ -f "$HERE/.no_net" || "$ENCLOSER_NO_NET" == "1" ]]; then',
         '        BWRAP_CMD+=(--unshare-net)',
         '    fi',
@@ -646,6 +646,10 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
     app_dir = os.path.join(ENCLOSED_DIR, folder_name)
     pids = set()
     my_pid = os.getpid()
+    app_real = os.path.realpath(app_dir) if os.path.isdir(app_dir) else ""
+
+    if not app_real:
+        return []
 
     pid_file = os.path.join(app_dir, "userdata", "running.pid")
     if os.path.isfile(pid_file):
@@ -658,7 +662,33 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
                         if p != my_pid:
                             try:
                                 os.kill(p, 0)
-                                pids.add(p)
+                                p_exe = ""
+                                try:
+                                    p_exe = os.path.realpath(f"/proc/{p}/exe")
+                                except Exception:
+                                    pass
+                                if p_exe and (p_exe == app_real or p_exe.startswith(app_real + os.sep)):
+                                    pids.add(p)
+                                else:
+                                    matched = False
+                                    try:
+                                        with open(f"/proc/{p}/cmdline", "rb") as cf:
+                                            raw_args = cf.read().split(b"\0")
+                                        for arg_b in raw_args:
+                                            arg_str = arg_b.decode("utf-8", errors="ignore").strip()
+                                            if arg_str and (arg_str == app_real or os.path.realpath(arg_str).startswith(app_real + os.sep)):
+                                                pids.add(p)
+                                                matched = True
+                                                break
+                                    except Exception:
+                                        pass
+                                    if not matched:
+                                        try:
+                                            p_cwd = os.path.realpath(f"/proc/{p}/cwd")
+                                            if p_cwd and (p_cwd == app_real or p_cwd.startswith(app_real + os.sep)):
+                                                pids.add(p)
+                                        except Exception:
+                                            pass
                             except OSError:
                                 pass
         except Exception:
@@ -666,12 +696,6 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
 
     if fast_check:
         return sorted(pids)
-
-    if not os.path.isdir(app_dir) and not pids:
-        return []
-
-    app_real = os.path.realpath(app_dir) if os.path.isdir(app_dir) else ""
-    target_match = f"/EnclosedApps/{folder_name}"
 
     try:
         proc_entries = os.listdir("/proc")
@@ -689,15 +713,7 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
             exe_link = ""
             try:
                 exe_link = os.path.realpath(f"{proc_dir}/exe")
-                if app_real and (exe_link == app_real or exe_link.startswith(app_real + os.sep)):
-                    pids.add(p)
-                    continue
-            except Exception:
-                pass
-
-            try:
-                cwd_link = os.path.realpath(f"{proc_dir}/cwd")
-                if app_real and (cwd_link == app_real or cwd_link.startswith(app_real + os.sep)):
+                if exe_link and (exe_link == app_real or exe_link.startswith(app_real + os.sep)):
                     pids.add(p)
                     continue
             except Exception:
@@ -707,7 +723,7 @@ def get_running_app_pids(folder_name: str, fast_check: bool = True) -> List[int]
                 try:
                     with open(f"{proc_dir}/cmdline", "rb") as f:
                         cmd = f.read().decode("utf-8", errors="ignore")
-                        if (app_real and app_real in cmd) or target_match in cmd:
+                        if app_real in cmd or f"/EnclosedApps/{folder_name}" in cmd:
                             pids.add(p)
                             continue
                 except Exception:

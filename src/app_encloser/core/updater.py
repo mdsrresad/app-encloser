@@ -35,7 +35,7 @@ def verify_file_checksum(file_path: str, checksums_url: Optional[str]) -> bool:
         expected = None
         for line in sums_text.splitlines():
             parts = line.strip().split()
-            if len(parts) >= 2 and parts[1].lstrip("./*") == base:
+            if len(parts) >= 2 and parts[-1].lstrip("./*") == base:
                 expected = parts[0].lower()
                 break
         if not expected:

@@ -22,7 +22,7 @@ from app_encloser.core.diagnostic import (
 
 
 def run_mcp_server():
-    if not get_setting("mcp_enabled", True):
+    if not get_setting("mcp_enabled", False):
         err_res = {
             "jsonrpc": "2.0",
             "error": {"code": -32000, "message": "MCP server is disabled in App Encloser preferences."}

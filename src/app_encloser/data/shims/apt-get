@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+app_dir="$(dirname "$(dirname "$(dirname "$(readlink -f "${0}")")")")"
+app_files="$app_dir/app_files"
+etc_apt="$app_dir/userdata/etc_apt/sources.list.d"
+lists_dir="$app_dir/userdata/var_lib_apt_lists"
+cache_dir="$app_dir/userdata/cache/apt"
+keyrings_dir="$app_dir/userdata/keyrings"
+
+if [[ "$1" == "upgrade" || "$1" == "full-upgrade" || "$1" == "dist-upgrade" ]]; then
+    echo "[Container APT] Full system upgrade is not supported inside an isolated container. Manage individual container packages via 'install' or 'remove'." >&2
+    exit 1
+fi
+
+if [[ "$1" == "update" ]]; then
+    mkdir -p "$lists_dir/partial"
+    mkdir -p "$cache_dir"
+    mkdir -p "$keyrings_dir"
+    if [[ -d "$etc_apt" && $(ls -A "$etc_apt" 2>/dev/null) ]]; then
+        /usr/bin/apt-get \
+            -o Dir::Etc::sourcelist=/etc/apt/sources.list \
+            -o Dir::Etc::sourceparts="$etc_apt" \
+            -o Dir::Etc::trustedparts="$keyrings_dir" \
+            -o Dir::State::lists="$lists_dir" \
+            -o Dir::Cache="$cache_dir" \
+            -o Debug::NoLocking=1 update
+        EC=$?
+        if [[ $EC -ne 0 ]]; then
+            echo "[Container APT] Package index update failed with exit code $EC." >&2
+            exit $EC
+        fi
+        echo "[Container APT] Isolated package metadata is synchronized."
+        exit 0
+    else
+        echo "[Container APT] No isolated sources configured; using host package index."
+        exit 0
+    fi
+fi
+
+if [[ "$1" == "install" ]]; then
+    shift
+    PKGS=()
+    for arg in "$@"; do
+        if [[ "$arg" != -* ]]; then
+            PKGS+=("$arg")
+        fi
+    done
+    if [[ ${#PKGS[@]} -eq 0 ]]; then
+        echo "Error: No package specified to install."
+        exit 1
+    fi
+    for p in "${PKGS[@]}"; do
+        encloser-install "$p"
+    done
+    exit $?
+fi
+
+if [[ "$1" == "remove" || "$1" == "purge" ]]; then
+    shift
+    PKGS=()
+    for arg in "$@"; do
+        if [[ "$arg" != -* ]]; then
+            PKGS+=("$arg")
+        fi
+    done
+    if [[ ${#PKGS[@]} -eq 0 ]]; then
+        echo "Error: No package specified to remove."
+        exit 1
+    fi
+    for p in "${PKGS[@]}"; do
+        encloser-install --remove "$p"
+    done
+    exit $?
+fi
+
+if [[ -x /usr/bin/apt-get ]]; then
+    exec /usr/bin/apt-get "$@"
+fi

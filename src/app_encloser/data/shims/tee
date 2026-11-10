@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+import os
+import sys
+
+app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app_files = os.path.join(app_dir, "app_files")
+etc_apt = os.path.join(app_dir, "userdata", "etc_apt", "sources.list.d")
+keyrings_dir = os.path.join(app_dir, "userdata", "keyrings")
+os.makedirs(etc_apt, exist_ok=True)
+os.makedirs(keyrings_dir, exist_ok=True)
+
+append_mode = False
+target_files = []
+
+for arg in sys.argv[1:]:
+    if arg in ("-a", "--append"):
+        append_mode = True
+    elif arg.startswith("-"):
+        continue
+    else:
+        fn = os.path.basename(arg)
+        if "/etc/apt/" in arg or arg.endswith(".list") or arg.endswith(".sources"):
+            target_files.append(os.path.join(etc_apt, fn))
+        else:
+            try:
+                d = os.path.dirname(arg)
+                if d and not os.path.exists(d):
+                    os.makedirs(d, exist_ok=True)
+                target_files.append(arg)
+            except Exception:
+                target_files.append(os.path.join(etc_apt, fn))
+
+data = sys.stdin.buffer.read()
+sys.stdout.buffer.write(data)
+sys.stdout.buffer.flush()
+
+mode = "ab" if append_mode else "wb"
+for tf in target_files:
+    try:
+        write_data = data
+        if tf.startswith(etc_apt):
+            try:
+                text_content = data.decode("utf-8", errors="ignore")
+                if "/usr/share/keyrings" in text_content or "/etc/apt/keyrings" in text_content:
+                    text_content = text_content.replace("/usr/share/keyrings/", keyrings_dir.rstrip("/") + "/")
+                    text_content = text_content.replace("/etc/apt/keyrings/", keyrings_dir.rstrip("/") + "/")
+                    write_data = text_content.encode("utf-8")
+            except Exception:
+                pass
+        with open(tf, mode) as f:
+            f.write(write_data)
+    except Exception as e:
+        sys.stderr.write(f"tee: {tf}: {e}\n")

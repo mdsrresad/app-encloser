@@ -1,0 +1,5 @@
+#!/bin/sh
+if [ -p /dev/stdin ]; then
+    cat >/dev/null 2>&1 || true
+fi
+exit 0
